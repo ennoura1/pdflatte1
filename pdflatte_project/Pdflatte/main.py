@@ -294,9 +294,6 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
         # Pre-process markdown for LaTeX rendering
         processed_text = prepare_latex_for_rendering(markdown_text)
 
-        # Set up font configuration
-        font_config = FontConfiguration()
-
         # Convert markdown to HTML with KaTeX extension for LaTeX rendering
         html = markdown.markdown(
             processed_text,
@@ -434,13 +431,9 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
         </html>
         """
 
-        # Create font configuration
-        font_config = FontConfiguration()
+        # Use WeasyPrint without font_config to avoid the font error
+        pdf = HTML(string=html_doc).write_pdf()
         
-        # Convert HTML to PDF with correct font configuration
-        font_config = FontConfiguration()
-        pdf = HTML(string=html_doc).write_pdf(font_config=font_config)
-
         # Write PDF to file
         with open(output_path, 'wb') as f:
             f.write(pdf)
