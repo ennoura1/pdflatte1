@@ -10,6 +10,8 @@ from google.api_core.exceptions import GoogleAPIError
 import time
 import json
 import concurrent.futures
+import markdown
+import weasyprint
 
 # Page configuration
 st.set_page_config(
@@ -72,6 +74,7 @@ with st.sidebar:
     - Google Generative AI SDK for Gemini API integration
     - PIL (Pillow) for image processing
     - Concurrent processing for faster results
+    - Markdown and WeasyPrint for PDF generation
     """)
 
 # Function to convert PDF page to images
@@ -116,7 +119,7 @@ def transcribe_image(img, model_name="gemini-2.0-flash", debug=False):
 
         # Create prompt parts with the image following Google's Python format
         prompt_parts = [
-            "Please transcribe all the text content from this image accurately. Preserve paragraphs, bullet points, and overall formatting. For ALL mathematical expressions and equations, provide them in proper LaTeX format surrounded by $ for inline math or $$ for display math. This is critical for proper rendering. Do not add any explanatory text or commentary to your transcription.",
+            "Please transcribe all the text content from this image accurately. Format your response using Markdown syntax. Preserve paragraphs, bullet points, and overall formatting. For ALL mathematical expressions and equations, provide them in proper LaTeX format surrounded by $ for inline math or $$ for display math. This is critical for proper rendering. Do not add any explanatory text or commentary to your transcription.",
             {
                 "mime_type": "image/png", 
                 "data": img_b64
@@ -155,6 +158,7 @@ def translate_to_arabic(text, model_name="gemini-2.0-flash", debug=False):
         Translate the following text to Arabic. If the text contains any LaTeX math expressions
         (surrounded by $ or $$), keep those expressions exactly as they are without translating them.
         Only translate the regular text, not the LaTeX math syntax or content.
+        Format your response in Markdown for proper rendering.
 
         Here's the text to translate:
 
@@ -198,6 +202,82 @@ def process_page(page_data):
     transcription = transcribe_image(img, model_name=model_choice, debug=debug_mode)
 
     return i, transcription
+
+# Function to translate a single page
+def translate_page(page_data):
+    text, i, total_pages, model_choice, debug_mode = page_data
+
+    if debug_mode:
+        st.write(f"Starting translation for page {i+1}")
+
+    # Translate text
+    translation = translate_to_arabic(text, model_name=model_choice, debug=debug_mode)
+
+    return i, translation
+
+# Function to convert markdown to PDF
+def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
+    try:
+        # Convert markdown to HTML with LaTeX support
+        html = markdown.markdown(markdown_text, extensions=['extra', 'codehilite'])
+
+        # Add MathJax support for LaTeX rendering
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>{title}</title>
+            <script type="text/javascript" async
+                src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML">
+            </script>
+            <script type="text/x-mathjax-config">
+                MathJax.Hub.Config({{
+                    tex2jax: {{
+                        inlineMath: [['$','$'], ['\\\\(','\\\\)']],
+                        displayMath: [['$$','$$'], ['\\\\[','\\\\]']],
+                        processEscapes: true
+                    }}
+                }});
+            </script>
+            <style>
+                body {{
+                    font-family: Arial, sans-serif;
+                    line-height: 1.6;
+                    margin: 2em;
+                }}
+                h1, h2, h3 {{
+                    color: #2c3e50;
+                }}
+                pre {{
+                    background-color: #f8f8f8;
+                    border: 1px solid #ddd;
+                    padding: 10px;
+                    border-radius: 3px;
+                }}
+                img {{
+                    max-width: 100%;
+                }}
+            </style>
+        </head>
+        <body>
+            <h1>{title}</h1>
+            {html}
+        </body>
+        </html>
+        """
+
+        # Convert HTML to PDF
+        pdf = weasyprint.HTML(string=html).write_pdf()
+
+        # Write PDF to file
+        with open(output_path, 'wb') as f:
+            f.write(pdf)
+
+        return True
+    except Exception as e:
+        st.error(f"Error converting markdown to PDF: {str(e)}")
+        return False
 
 # Upload PDF file
 uploaded_file = st.file_uploader("Upload a PDF document", type="pdf")
@@ -294,7 +374,7 @@ if uploaded_file is not None:
 
         if 'processed' in st.session_state and st.session_state.processed:
             # Create tabs for viewing results
-            tabs = st.tabs(["Complete Document", "Page by Page", "Arabic Translation"])
+            tabs = st.tabs(["Complete Document", "Page by Page", "Arabic Translation", "PDF Export"])
 
             with tabs[0]:
                 st.text_area("Complete Transcription", 
@@ -341,21 +421,75 @@ if uploaded_file is not None:
             with tabs[2]:
                 st.subheader("Arabic Translation")
 
+                # Radio button to select translation mode
+                translation_mode = st.radio(
+                    "Translation Mode",
+                    ["Translate Complete Document", "Translate Page by Page (More Accurate)"],
+                    index=1
+                )
+
                 # Button to trigger translation
                 if 'translation_processed' not in st.session_state:
                     st.session_state.translation_processed = False
                     st.session_state.arabic_text = ""
+                    st.session_state.page_translations = []
 
                 if st.button("Translate to Arabic"):
                     with st.spinner("Translating to Arabic..."):
-                        # Translate the entire document
-                        arabic_text = translate_to_arabic(
-                            st.session_state.all_text,
-                            model_name=model_choice,
-                            debug=debug_mode
-                        )
-                        st.session_state.arabic_text = arabic_text
-                        st.session_state.translation_processed = True
+                        if translation_mode == "Translate Complete Document":
+                            # Translate the entire document at once
+                            arabic_text = translate_to_arabic(
+                                st.session_state.all_text,
+                                model_name=model_choice,
+                                debug=debug_mode
+                            )
+                            st.session_state.arabic_text = arabic_text
+                            st.session_state.translation_processed = True
+                        else:
+                            # Translate each page separately for better accuracy
+                            page_translations = [None] * len(st.session_state.transcription_results)
+
+                            # Prepare translation data
+                            translation_data = [
+                                (text, i, len(st.session_state.transcription_results), model_choice, debug_mode)
+                                for i, text in enumerate(st.session_state.transcription_results)
+                            ]
+
+                            translation_progress = st.progress(0)
+                            translation_status = st.empty()
+                            translation_status.text("Starting translation of individual pages...")
+
+                            # Process pages in parallel if enabled
+                            if parallel_processing:
+                                completed = 0
+                                with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                                    future_to_page = {executor.submit(translate_page, data): data for data in translation_data}
+
+                                    for future in concurrent.futures.as_completed(future_to_page):
+                                        i, translation = future.result()
+                                        page_translations[i] = translation
+
+                                        # Update progress
+                                        completed += 1
+                                        translation_progress.progress(completed / len(page_translations))
+                                        translation_status.text(f"Translated page {i+1}/{len(page_translations)}...")
+                            else:
+                                # Sequential translation
+                                for i, data in enumerate(translation_data):
+                                    translation_status.text(f"Translating page {i+1}/{len(translation_data)}...")
+                                    _, translation = translate_page(data)
+                                    page_translations[i] = translation
+                                    translation_progress.progress((i + 1) / len(translation_data))
+
+                            # Combine translations
+                            combined_translation = ""
+                            for i, translation in enumerate(page_translations):
+                                combined_translation += f"\n\n--- PAGE {i+1} ---\n\n{translation}"
+
+                            st.session_state.arabic_text = combined_translation.strip()
+                            st.session_state.page_translations = page_translations
+                            st.session_state.translation_processed = True
+                            translation_status.text("Translation completed!")
 
                 if st.session_state.translation_processed:
                     # Display the translated text
@@ -373,8 +507,95 @@ if uploaded_file is not None:
                         file_name=f"{uploaded_file.name.split('.')[0]}_arabic_translation.txt",
                         mime="text/plain"
                     )
+
+                    # If we translated page by page, show option to view individual pages
+                    if translation_mode == "Translate Page by Page (More Accurate)" and hasattr(st.session_state, 'page_translations'):
+                        if len(st.session_state.page_translations) > 0:
+                            # Page selection for translated content
+                            ar_selected_page = st.selectbox(
+                                "Select page to view Arabic translation", 
+                                range(1, len(st.session_state.page_translations)+1),
+                                key="ar_page_selector"
+                            )
+
+                            st.text_area(
+                                f"Page {ar_selected_page} Arabic Translation", 
+                                st.session_state.page_translations[ar_selected_page-1], 
+                                height=300,
+                                key=f"ar_page_{ar_selected_page}"
+                            )
                 else:
                     st.info("Click 'Translate to Arabic' to generate the Arabic translation.")
+
+            with tabs[3]:
+                st.subheader("PDF Export")
+
+                # Select content to export
+                export_content = st.radio(
+                    "Select content to export as PDF",
+                    ["Original Transcription", "Arabic Translation"],
+                    key="export_content"
+                )
+
+                # Check if we have the selected content available
+                content_available = False
+                if export_content == "Original Transcription" and hasattr(st.session_state, 'all_text'):
+                    content_available = True
+                    content_to_export = st.session_state.all_text
+                    export_title = f"{uploaded_file.name.split('.')[0]} - Transcription"
+                elif export_content == "Arabic Translation" and hasattr(st.session_state, 'translation_processed') and st.session_state.translation_processed:
+                    content_available = True
+                    content_to_export = st.session_state.arabic_text
+                    export_title = f"{uploaded_file.name.split('.')[0]} - Arabic Translation"
+
+                if content_available:
+                    if st.button("Generate PDF"):
+                        with st.spinner("Generating PDF..."):
+                            # Create a temporary file to store the PDF
+                            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+                                pdf_path = tmp_file.name
+
+                            # Convert markdown to PDF
+                            success = markdown_to_pdf(content_to_export, pdf_path, title=export_title)
+
+                            if success:
+                                # Read the generated PDF
+                                with open(pdf_path, 'rb') as f:
+                                    pdf_data = f.read()
+
+                                # Store PDF in session state
+                                st.session_state.pdf_data = pdf_data
+                                st.session_state.pdf_filename = f"{uploaded_file.name.split('.')[0]}_{export_content.lower().replace(' ', '_')}.pdf"
+                                st.session_state.pdf_generated = True
+
+                                # Clean up the temporary file
+                                os.unlink(pdf_path)
+
+                                st.success("PDF generated successfully!")
+                            else:
+                                st.error("Failed to generate PDF. Please try again.")
+
+                    # Download button for PDF (only shown if PDF was generated)
+                    if hasattr(st.session_state, 'pdf_generated') and st.session_state.pdf_generated:
+                        st.download_button(
+                            label=f"Download {export_content} as PDF",
+                            data=st.session_state.pdf_data,
+                            file_name=st.session_state.pdf_filename,
+                            mime="application/pdf"
+                        )
+                else:
+                    if export_content == "Original Transcription":
+                        st.info("Please process a PDF document first to generate the transcription.")
+                    else:
+                        st.info("Please translate the content to Arabic first.")
+
+                st.markdown("""
+                #### About PDF Export
+                - The PDF export feature converts the markdown-formatted text to a PDF document
+                - Mathematical expressions in LaTeX format are rendered properly in the PDF
+                - Arabic text is fully supported with right-to-left rendering
+                - You can choose to export either the original transcription or the Arabic translation
+                """)
 else:
     # Display sample image when no PDF is uploaded
     st.info("Please upload a PDF document to begin the transcription process.")
@@ -389,6 +610,7 @@ else:
         4. View the results page by page or as a complete document
         5. Download the transcription as a text file
         6. Translate to Arabic if needed
+        7. Export to PDF with proper formatting
         """)
 
     with col2:
@@ -400,6 +622,7 @@ else:
         - For multi-page PDFs, each page is processed individually
         - Enable parallel processing for faster results
         - Enable debug mode to troubleshoot API issues
+        - For better translation quality, use the page-by-page option
         """)
 
     # API key information box
