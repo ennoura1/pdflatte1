@@ -433,36 +433,11 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
         </html>
         """
 
-        # Create a temporary CSS file with KaTeX fonts
-        katex_css = CSS(string="""
-        @font-face {
-            font-family: 'KaTeX_Main';
-            src: url('https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/fonts/KaTeX_Main-Regular.woff2') format('woff2');
-            font-weight: normal;
-            font-style: normal;
-        }
-        @font-face {
-            font-family: 'KaTeX_Math';
-            src: url('https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/fonts/KaTeX_Math-Italic.woff2') format('woff2');
-            font-weight: normal;
-            font-style: italic;
-        }
-        @font-face {
-            font-family: 'KaTeX_Size1';
-            src: url('https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/fonts/KaTeX_Size1-Regular.woff2') format('woff2');
-            font-weight: normal;
-            font-style: normal;
-        }
-        @font-face {
-            font-family: 'KaTeX_Size2';
-            src: url('https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/fonts/KaTeX_Size2-Regular.woff2') format('woff2');
-            font-weight: normal;
-            font-style: normal;
-        }
-        """)
-
+        # Create font configuration
+        font_config = FontConfiguration()
+        
         # Convert HTML to PDF with improved font handling
-        pdf = HTML(string=html_doc).write_pdf(stylesheets=[katex_css], font_config=font_config)
+        pdf = HTML(string=html_doc).write_pdf(font_config=font_config)
 
         # Write PDF to file
         with open(output_path, 'wb') as f:
