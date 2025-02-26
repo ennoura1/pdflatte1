@@ -14,6 +14,7 @@ import markdown
 import weasyprint
 import re
 import latex2mathml.converter
+from mathpix_markdown_it import mathpix_markdown_it
 
 # Page configuration
 st.set_page_config(
@@ -80,7 +81,8 @@ with st.sidebar:
     - Google Generative AI SDK for Gemini API integration
     - PIL (Pillow) for image processing
     - Concurrent processing for faster results
-    - Markdown and WeasyPrint for PDF generation
+    - Mathpix Markdown-it for LaTeX and math rendering
+    - WeasyPrint for PDF generation
     """)
 
 # Function to convert PDF page to images
@@ -246,28 +248,31 @@ def translate_page(page_data):
 
     return i, translation
 
-# Function to convert LaTeX to MathML
-def convert_latex_to_mathml(text):
-    # Function to convert a single LaTeX expression to MathML
-    def replace_with_mathml(match):
-        latex_content = match.group(1)
-        try:
-            # Convert LaTeX to MathML
-            mathml = latex2mathml.converter.convert(latex_content)
-            return mathml
-        except Exception as e:
-            # If conversion fails, return the original LaTeX
-            return match.group(0)
+# Function to render markdown with LaTeX using Mathpix's markdown-it
+def render_markdown_with_mathpix(markdown_text):
+    # Create an instance of mathpix-markdown-it with appropriate options
+    mathpix_md = mathpix_markdown_it.mathpixMarkdownIt(
+        options={
+            'html': True,
+            'xhtmlOut': True,
+            'breaks': True,
+            'langPrefix': 'language-',
+            'linkify': True,
+            'typographer': True,
+        },
+        # Enable plugins for better LaTeX handling
+        plugins=[
+            'math',
+            'latex',
+            'highlight',
+            'subscript',
+            'superscript'
+        ]
+    )
 
-    # Convert display math expressions ($$...$$)
-    display_pattern = r'\$\$(.*?)\$\$'
-    text = re.sub(display_pattern, lambda m: replace_with_mathml(m), text, flags=re.DOTALL)
-
-    # Convert inline math expressions ($...$)
-    inline_pattern = r'\$(.*?)\$'
-    text = re.sub(inline_pattern, lambda m: replace_with_mathml(m), text, flags=re.DOTALL)
-
-    return text
+    # Render markdown to HTML with LaTeX support
+    html = mathpix_md.render(markdown_text)
+    return html
 
 # Function to remove page headers for PDF generation
 def remove_page_headers(markdown_text):
@@ -280,11 +285,8 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
         # Remove page headers from the markdown text
         markdown_text = remove_page_headers(markdown_text)
 
-        # Pre-process markdown to convert LaTeX to MathML
-        processed_text = convert_latex_to_mathml(markdown_text)
-
-        # Convert markdown to HTML
-        html = markdown.markdown(processed_text, extensions=['extra', 'codehilite'])
+        # Render markdown with LaTeX to HTML using Mathpix's markdown-it
+        html_content = render_markdown_with_mathpix(markdown_text)
 
         # Create the final HTML document
         html = f"""
@@ -335,33 +337,14 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
                 }}
 
                 /* Math styling */
-                math {{
+                .katex {{
                     font-size: 1.15em;
                     font-weight: normal;
                     line-height: 1.5;
                 }}
-                math > mfrac {{
-                    font-size: 1.15em;
-                    line-height: 1.5;
-                    vertical-align: -0.5em;
-                }}
-                math > msup, math > msub {{
-                    line-height: 1;
-                }}
-                math > mi, math > mn {{
-                    font-style: normal;
-                    padding: 0 0.1em;
-                }}
-                math > mo {{
-                    padding: 0 0.2em;
-                }}
-
-                /* Equations spacing */
-                math[display="block"] {{
-                    display: block;
-                    text-align: center;
+                .katex-display {{
                     margin: 1.5em 0;
-                    text-indent: 0;
+                    text-align: center;
                 }}
 
                 /* Tables */
@@ -407,7 +390,7 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
         <body>
             <h1>{title}</h1>
             <div class="{'rtl' if 'Arabic' in title else ''}">
-                {html}
+                {html_content}
             </div>
         </body>
         </html>
