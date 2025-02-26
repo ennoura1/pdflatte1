@@ -13,7 +13,6 @@ import concurrent.futures
 import markdown
 import weasyprint
 import re
-import latex2mathml.converter
 
 # Page configuration
 st.set_page_config(
@@ -246,26 +245,28 @@ def translate_page(page_data):
 
     return i, translation
 
-# Function to convert LaTeX to MathML
-def convert_latex_to_mathml(text):
-    # Function to convert a single LaTeX expression to MathML
-    def replace_with_mathml(match):
+# Function to prepare LaTeX for KaTeX rendering
+def prepare_latex_for_katex(text):
+    # Function to format a single LaTeX expression for KaTeX
+    def format_for_katex(match, is_display=False):
         latex_content = match.group(1)
-        try:
-            # Convert LaTeX to MathML
-            mathml = latex2mathml.converter.convert(latex_content)
-            return mathml
-        except Exception as e:
-            # If conversion fails, return the original LaTeX
-            return match.group(0)
+        # Escape any HTML special characters in the LaTeX content
+        escaped_content = latex_content.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        
+        if is_display:
+            # For display math, wrap in KaTeX display mode div
+            return f'<div class="katex-display"><span class="katex-math" data-display="true">{escaped_content}</span></div>'
+        else:
+            # For inline math, wrap in KaTeX inline mode span
+            return f'<span class="katex-math" data-display="false">{escaped_content}</span>'
 
-    # Convert display math expressions ($$...$$)
+    # Format display math expressions ($$...$$)
     display_pattern = r'\$\$(.*?)\$\$'
-    text = re.sub(display_pattern, lambda m: replace_with_mathml(m), text, flags=re.DOTALL)
+    text = re.sub(display_pattern, lambda m: format_for_katex(m, True), text, flags=re.DOTALL)
 
-    # Convert inline math expressions ($...$)
+    # Format inline math expressions ($...$)
     inline_pattern = r'\$(.*?)\$'
-    text = re.sub(inline_pattern, lambda m: replace_with_mathml(m), text, flags=re.DOTALL)
+    text = re.sub(inline_pattern, lambda m: format_for_katex(m, False), text, flags=re.DOTALL)
 
     return text
 
@@ -280,8 +281,8 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
         # Remove page headers from the markdown text
         markdown_text = remove_page_headers(markdown_text)
 
-        # Pre-process markdown to convert LaTeX to MathML
-        processed_text = convert_latex_to_mathml(markdown_text)
+        # Pre-process markdown to prepare LaTeX for KaTeX
+        processed_text = prepare_latex_for_katex(markdown_text)
 
         # Convert markdown to HTML
         html = markdown.markdown(processed_text, extensions=['extra', 'codehilite'])
@@ -293,9 +294,13 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
         <head>
             <meta charset="UTF-8">
             <title>{title}</title>
+            <!-- KaTeX CSS -->
+            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
+            
             <style>
                 @import url('https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&display=swap');
                 @import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400;1,600&display=swap');
+                @import url('https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&display=swap');
 
                 body {{
                     font-family: 'Merriweather', 'Georgia', serif;
@@ -334,36 +339,23 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
                     margin: 1.5em 0;
                 }}
 
-                /* Math styling */
-                math {{
-                    font-size: 1.15em;
-                    font-weight: normal;
-                    line-height: 1.5;
-                }}
-                math > mfrac {{
+                /* KaTeX styling */
+                .katex {{
                     font-size: 1.15em;
                     line-height: 1.5;
-                    vertical-align: -0.5em;
                 }}
-                math > msup, math > msub {{
-                    line-height: 1;
-                }}
-                math > mi, math > mn {{
-                    font-style: normal;
-                    padding: 0 0.1em;
-                }}
-                math > mo {{
-                    padding: 0 0.2em;
-                }}
-
-                /* Equations spacing */
-                math[display="block"] {{
-                    display: block;
-                    text-align: center;
+                .katex-display {{
                     margin: 1.5em 0;
-                    text-indent: 0;
+                    text-align: center;
+                    overflow-x: auto;
+                    overflow-y: hidden;
+                    padding: 0.5em 0;
                 }}
-
+                /* Fine-tune KaTeX display */
+                .katex-display > .katex {{
+                    font-size: 1.21em; /* Larger size for display equations */
+                }}
+                
                 /* Tables */
                 table {{
                     border-collapse: collapse;
@@ -403,6 +395,36 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
                     margin: 2.5cm 2cm;
                 }}
             </style>
+            
+            <!-- KaTeX JavaScript -->
+            <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8" crossorigin="anonymous"></script>
+            <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05" crossorigin="anonymous"></script>
+            <script>
+                document.addEventListener("DOMContentLoaded", function() {{
+                    // Auto-render KaTeX elements
+                    renderMathInElement(document.body, {{
+                        delimiters: [
+                            {{left: '$$', right: '$$', display: true}},
+                            {{left: '$', right: '$', display: false}}
+                        ],
+                        throwOnError: false
+                    }});
+                    
+                    // Render all elements with katex-math class manually
+                    document.querySelectorAll('.katex-math').forEach(function(element) {{
+                        try {{
+                            const isDisplay = element.getAttribute('data-display') === 'true';
+                            katex.render(element.textContent, element, {{
+                                displayMode: isDisplay,
+                                throwOnError: false,
+                                output: 'html'
+                            }});
+                        }} catch (e) {{
+                            console.error("KaTeX rendering error:", e);
+                        }}
+                    }});
+                }});
+            </script>
         </head>
         <body>
             <h1>{title}</h1>
@@ -527,6 +549,18 @@ if uploaded_file is not None:
                 st.text_area("Complete Transcription", 
                                st.session_state.all_text, 
                                height=500)
+
+                # Add a preview option with LaTeX rendering
+                if st.checkbox("Show Preview with LaTeX Rendering"):
+                    # Use HTML to render markdown with KaTeX support
+                    st.markdown("""
+                    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+                    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+                    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body);"></script>
+                    """, unsafe_allow_html=True)
+                    
+                    # Show the rendered markdown
+                    st.markdown(st.session_state.all_text, unsafe_allow_html=True)
 
                 # Download button for complete text
                 st.download_button(
