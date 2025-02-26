@@ -13,7 +13,10 @@ import concurrent.futures
 import markdown
 import weasyprint
 import re
+from weasyprint import HTML, CSS
+from weasyprint.text.fonts import FontConfiguration
 import latex2mathml.converter
+from markdown_katex.extension import KatexExtension
 
 # Page configuration
 st.set_page_config(
@@ -246,27 +249,20 @@ def translate_page(page_data):
 
     return i, translation
 
-# Function to convert LaTeX to MathML
-def convert_latex_to_mathml(text):
-    # Function to convert a single LaTeX expression to MathML
-    def replace_with_mathml(match):
-        latex_content = match.group(1)
-        try:
-            # Convert LaTeX to MathML
-            mathml = latex2mathml.converter.convert(latex_content)
-            return mathml
-        except Exception as e:
-            # If conversion fails, return the original LaTeX
-            return match.group(0)
-
-    # Convert display math expressions ($$...$$)
-    display_pattern = r'\$\$(.*?)\$\$'
-    text = re.sub(display_pattern, lambda m: replace_with_mathml(m), text, flags=re.DOTALL)
-
-    # Convert inline math expressions ($...$)
-    inline_pattern = r'\$(.*?)\$'
-    text = re.sub(inline_pattern, lambda m: replace_with_mathml(m), text, flags=re.DOTALL)
-
+# Function to handle LaTeX rendering
+def prepare_latex_for_rendering(text):
+    """
+    Prepares LaTeX content for proper rendering in PDF by:
+    1. Ensuring LaTeX expressions are properly formatted
+    2. Preserving display math mode
+    """
+    # Replace double dollar with display math markers for KaTeX
+    text = re.sub(r'\$\$(.*?)\$\$', r'\\begin{equation}\1\\end{equation}', text, flags=re.DOTALL)
+    
+    # Ensure proper spacing around inline math
+    text = re.sub(r'([^\s])\$', r'\1 $', text)
+    text = re.sub(r'\$([^\s])', r'$ \1', text)
+    
     return text
 
 # Function to remove page headers for PDF generation
@@ -280,19 +276,30 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
         # Remove page headers from the markdown text
         markdown_text = remove_page_headers(markdown_text)
 
-        # Pre-process markdown to convert LaTeX to MathML
-        processed_text = convert_latex_to_mathml(markdown_text)
+        # Pre-process markdown for LaTeX rendering
+        processed_text = prepare_latex_for_rendering(markdown_text)
 
-        # Convert markdown to HTML
-        html = markdown.markdown(processed_text, extensions=['extra', 'codehilite'])
+        # Set up font configuration
+        font_config = FontConfiguration()
+        
+        # Convert markdown to HTML with KaTeX extension for LaTeX rendering
+        html = markdown.markdown(
+            processed_text,
+            extensions=[
+                'extra',
+                'codehilite',
+                KatexExtension(output_format="html")
+            ]
+        )
 
-        # Create the final HTML document
-        html = f"""
+        # Create the final HTML document with KaTeX CSS
+        html_doc = f"""
         <!DOCTYPE html>
         <html>
         <head>
             <meta charset="UTF-8">
             <title>{title}</title>
+            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
             <style>
                 @import url('https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&display=swap');
                 @import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400;1,600&display=swap');
@@ -334,36 +341,19 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
                     margin: 1.5em 0;
                 }}
 
-                /* Math styling */
-                math {{
-                    font-size: 1.15em;
-                    font-weight: normal;
-                    line-height: 1.5;
-                }}
-                math > mfrac {{
-                    font-size: 1.15em;
-                    line-height: 1.5;
-                    vertical-align: -0.5em;
-                }}
-                math > msup, math > msub {{
-                    line-height: 1;
-                }}
-                math > mi, math > mn {{
-                    font-style: normal;
-                    padding: 0 0.1em;
-                }}
-                math > mo {{
-                    padding: 0 0.2em;
-                }}
-
-                /* Equations spacing */
-                math[display="block"] {{
-                    display: block;
-                    text-align: center;
-                    margin: 1.5em 0;
+                /* LaTeX/KaTeX styling */
+                .katex {{
+                    font: normal 1.21em KaTeX_Main, Times New Roman, serif;
+                    line-height: 1.2;
+                    white-space: normal;
                     text-indent: 0;
                 }}
-
+                .katex-display {{
+                    display: block;
+                    margin: 1em 0;
+                    text-align: center;
+                }}
+                
                 /* Tables */
                 table {{
                     border-collapse: collapse;
@@ -413,8 +403,36 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
         </html>
         """
 
-        # Convert HTML to PDF
-        pdf = weasyprint.HTML(string=html).write_pdf()
+        # Create a temporary CSS file with KaTeX fonts
+        katex_css = CSS(string="""
+        @font-face {
+            font-family: 'KaTeX_Main';
+            src: url('https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/fonts/KaTeX_Main-Regular.woff2') format('woff2');
+            font-weight: normal;
+            font-style: normal;
+        }
+        @font-face {
+            font-family: 'KaTeX_Math';
+            src: url('https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/fonts/KaTeX_Math-Italic.woff2') format('woff2');
+            font-weight: normal;
+            font-style: italic;
+        }
+        @font-face {
+            font-family: 'KaTeX_Size1';
+            src: url('https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/fonts/KaTeX_Size1-Regular.woff2') format('woff2');
+            font-weight: normal;
+            font-style: normal;
+        }
+        @font-face {
+            font-family: 'KaTeX_Size2';
+            src: url('https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/fonts/KaTeX_Size2-Regular.woff2') format('woff2');
+            font-weight: normal;
+            font-style: normal;
+        }
+        """)
+
+        # Convert HTML to PDF with improved font handling
+        pdf = HTML(string=html_doc).write_pdf(stylesheets=[katex_css], font_config=font_config)
 
         # Write PDF to file
         with open(output_path, 'wb') as f:
