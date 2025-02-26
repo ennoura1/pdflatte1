@@ -579,19 +579,6 @@ wheels = [
 ]
 
 [[package]]
-name = "markdown-katex"
-version = "202406.1035"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "markdown" },
-    { name = "setuptools" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/07/d1/fb725e498ae1119ce21d3f7b721a16e42fd43ee0433d1be092c279006b10/markdown-katex-202406.1035.tar.gz", hash = "sha256:e82f7bf9a8536451da8f01768d847516fa1827feb17140b8eaa0bea9826bdab0", size = 39561876 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f4/34/780748d7d78fb4024dd1a290844374dd0d9830da35593c534638a4e9e54e/markdown_katex-202406.1035-py2.py3-none-any.whl", hash = "sha256:c1713e85854ddecb641ad96243a8b6cd67367bf1bf8d39b43b3680d7f2b1884d", size = 39766871 },
-]
-
-[[package]]
 name = "markupsafe"
 version = "3.0.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1087,7 +1074,6 @@ dependencies = [
     { name = "google-generativeai" },
     { name = "latex2mathml" },
     { name = "markdown" },
-    { name = "markdown-katex" },
     { name = "pdf2image" },
     { name = "pdfkit" },
     { name = "pillow" },
@@ -1101,7 +1087,6 @@ requires-dist = [
     { name = "google-generativeai", specifier = ">=0.8.4" },
     { name = "latex2mathml", specifier = ">=3.77.0" },
     { name = "markdown", specifier = ">=3.7" },
-    { name = "markdown-katex", specifier = ">=202406.1035" },
     { name = "pdf2image", specifier = ">=1.17.0" },
     { name = "pdfkit", specifier = ">=1.0.0" },
     { name = "pillow", specifier = ">=11.1.0" },
@@ -1208,15 +1193,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/aa/65/7d973b89c4d2351d7fb232c2e452547ddfa243e93131e7cfa766da627b52/rsa-4.9.tar.gz", hash = "sha256:e38464a49c6c85d7f1351b0126661487a7e0a14a50f1675ec50eb34d4f20ef21", size = 29711 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/49/97/fa78e3d2f65c02c8e1268b9aba606569fe97f6c8f7c2d74394553347c145/rsa-4.9-py3-none-any.whl", hash = "sha256:90260d9058e514786967344d0ef75fa8727eed8a7d2e43ce9f4bcf1b536174f7", size = 34315 },
-]
-
-[[package]]
-name = "setuptools"
-version = "75.8.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/e8/42/0e5f75d734f181367de4acd9aba8f875453a5905169c5485ca8416b015ae/setuptools-75.8.1.tar.gz", hash = "sha256:65fb779a8f28895242923582eadca2337285f0891c2c9e160754df917c3d2530", size = 1343534 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/da/bd/ac215d31c2904e47ec5332897442bdc19fd6b21a82068d057152f4e9c1cf/setuptools-75.8.1-py3-none-any.whl", hash = "sha256:3bc32c0b84c643299ca94e77f834730f126efd621de0cc1de64119e0e17dab1f", size = 1228867 },
 ]
 
 [[package]]
