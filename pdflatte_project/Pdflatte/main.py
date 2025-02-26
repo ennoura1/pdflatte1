@@ -106,7 +106,7 @@ def transcribe_image(img, model_name="gemini-2.0-flash", debug=False):
 
         # Create prompt parts with the image following Google's Python format
         prompt_parts = [
-            "Please transcribe all the text content from this image accurately. Preserve paragraphs, bullet points, and overall formatting. Focus only on transcribing the text without additional commentary.Also I need the math transcription to be in latex",
+            "Please transcribe all the text content from this image accurately. Preserve paragraphs, bullet points, and overall formatting. For ALL mathematical expressions and equations, provide them in proper LaTeX format surrounded by $ for inline math or $$ for display math. This is critical for proper rendering. Do not add any explanatory text or commentary to your transcription.",
             {
                 "mime_type": "image/png", 
                 "data": img_b64
