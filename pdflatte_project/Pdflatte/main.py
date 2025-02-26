@@ -254,15 +254,29 @@ def prepare_latex_for_rendering(text):
     """
     Prepares LaTeX content for proper rendering in PDF by:
     1. Ensuring LaTeX expressions are properly formatted
-    2. Preserving display math mode
+    2. Preserving display math mode and equation environments
     """
-    # Replace double dollar with display math markers for KaTeX
-    text = re.sub(r'\$\$(.*?)\$\$', r'\\begin{equation}\1\\end{equation}', text, flags=re.DOTALL)
-    
+    # Preserve equation environments without double conversion
+    text = re.sub(r'\\begin\{equation\}(.*?)\\end\{equation\}', 
+                 lambda m: f'$$EQUATION_PLACEHOLDER_{hash(m.group(1))}$$', 
+                 text, flags=re.DOTALL)
+
+    # Replace double dollar with proper equation delimiters for KaTeX
+    text = re.sub(r'\$\$(.*?)\$\$', r'$$\1$$', text, flags=re.DOTALL)
+
     # Ensure proper spacing around inline math
-    text = re.sub(r'([^\s])\$', r'\1 $', text)
-    text = re.sub(r'\$([^\s])', r'$ \1', text)
-    
+    text = re.sub(r'([^\s])\$([^$])', r'\1 $\2', text)
+    text = re.sub(r'([^$])\$([^\s])', r'\1$ \2', text)
+
+    # Restore original equation environments
+    for match in re.finditer(r'EQUATION_PLACEHOLDER_(-?\d+)', text):
+        placeholder = match.group(0)
+        hash_value = int(match.group(1))
+        for match2 in re.finditer(r'\\begin\{equation\}(.*?)\\end\{equation\}', text, flags=re.DOTALL):
+            if hash(match2.group(1)) == hash_value:
+                text = text.replace(f'$$EQUATION_PLACEHOLDER_{hash_value}$$', match2.group(0))
+                break
+
     return text
 
 # Function to remove page headers for PDF generation
@@ -281,7 +295,7 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
 
         # Set up font configuration
         font_config = FontConfiguration()
-        
+
         # Convert markdown to HTML with KaTeX extension for LaTeX rendering
         html = markdown.markdown(
             processed_text,
@@ -342,18 +356,34 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
                 }}
 
                 /* LaTeX/KaTeX styling */
-                .katex {{
+                .katex {
                     font: normal 1.21em KaTeX_Main, Times New Roman, serif;
                     line-height: 1.2;
                     white-space: normal;
                     text-indent: 0;
-                }}
-                .katex-display {{
+                }
+                .katex-display {
                     display: block;
-                    margin: 1em 0;
+                    margin: 1.5em 0;
                     text-align: center;
-                }}
-                
+                    overflow-x: auto;
+                    overflow-y: hidden;
+                    padding: 0.5em 0;
+                }
+                .katex-display > .katex {
+                    display: inline-block;
+                    text-align: center;
+                    max-width: 100%;
+                }
+                .katex-html {
+                    text-align: left;
+                }
+                /* Fix for complex equations */
+                .katex-html .base {
+                    margin-top: 2px;
+                    margin-bottom: 2px;
+                }
+
                 /* Tables */
                 table {{
                     border-collapse: collapse;
