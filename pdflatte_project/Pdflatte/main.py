@@ -245,15 +245,15 @@ def remove_page_headers(markdown_text):
 
 # Function to process LaTeX for better rendering in PDF
 def process_latex_for_pdf(markdown_text):
-    # Function to handle display math expressions
+    # Function to handle display math expressions ($$...$$)
     def process_display_math(match):
         latex = match.group(1).strip()
-        return f'<div class="katex-display"><span class="katex-equation" data-latex="{latex}">$${latex}$$</span></div>'
+        return f'<div class="katex-display">{latex}</div>'
 
-    # Function to handle inline math expressions
+    # Function to handle inline math expressions ($...$)
     def process_inline_math(match):
         latex = match.group(1).strip()
-        return f'<span class="katex-inline" data-latex="{latex}">\\({latex}\\)</span>'
+        return f'<span class="katex-inline">{latex}</span>'
 
     # Replace display math ($$...$$)
     markdown_text = re.sub(r'\$\$(.*?)\$\$', process_display_math, markdown_text, flags=re.DOTALL)
@@ -295,16 +295,13 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription", style
             line_height = "1.6"
             margin = "2cm"
 
-        # Create the final HTML document with KaTeX for LaTeX rendering
+        # Create the final HTML document with MathJax for LaTeX rendering
         html = f"""
         <!DOCTYPE html>
         <html>
         <head>
             <meta charset="UTF-8">
             <title>{title}</title>
-
-            <!-- KaTeX CSS -->
-            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 
             <style>
                 @import url('https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&display=swap');
@@ -369,15 +366,15 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription", style
                     margin: 1.5em 0;
                     overflow-x: auto;
                     font-size: 1.1em;
+                    font-family: 'KaTeX_Main', 'Times New Roman', serif;
+                    color: #111;
+                    padding: 0.5em 0;
                 }}
 
                 .katex-inline {{
                     font-size: 1.05em;
-                }}
-
-                /* KaTeX specific styling */
-                .katex {{
-                    font-size: 1.1em !important;
+                    font-family: 'KaTeX_Main', 'Times New Roman', serif;
+                    color: #111;
                 }}
 
                 /* Tables */
@@ -432,33 +429,38 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription", style
                 @page {{
                     margin: {margin};
                 }}
+
+                /* Support for LaTeX rendering */
+                .katex-display::before,
+                .katex-display::after {{
+                    content: "";
+                    display: block;
+                    height: 0.5em;
+                }}
             </style>
 
-            <!-- Include KaTeX JavaScript for rendering -->
-            <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-            <script>
-                document.addEventListener("DOMContentLoaded", function() {{
-                    // Render display equations
-                    var displayEquations = document.querySelectorAll('.katex-equation');
-                    displayEquations.forEach(function(element) {{
-                        var latex = element.getAttribute('data-latex');
-                        katex.render(latex, element, {{
-                            displayMode: true,
-                            throwOnError: false,
-                            output: 'html'
-                        }});
-                    }});
-
-                    // Render inline equations
-                    var inlineEquations = document.querySelectorAll('.katex-inline');
-                    inlineEquations.forEach(function(element) {{
-                        var latex = element.getAttribute('data-latex');
-                        katex.render(latex, element, {{
-                            displayMode: false,
-                            throwOnError: false,
-                            output: 'html'
-                        }});
-                    }});
+            <!-- MathJax for LaTeX rendering -->
+            <script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML">
+            </script>
+            <script type="text/x-mathjax-config">
+                MathJax.Hub.Config({{
+                    tex2jax: {{
+                        inlineMath: [['\\\\(','\\\\)'], ['$', '$']],
+                        displayMath: [['\\\\[','\\\\]'], ['$$', '$$']],
+                        processEscapes: true
+                    }},
+                    "HTML-CSS": {{ 
+                        scale: 110,
+                        linebreaks: {{ automatic: true }},
+                        fonts: ["TeX"]
+                    }},
+                    CommonHTML: {{
+                        linebreaks: {{ automatic: true }}
+                    }},
+                    SVG: {{
+                        font: "TeX",
+                        linebreaks: {{ automatic: true }}
+                    }}
                 }});
             </script>
         </head>
@@ -519,7 +521,7 @@ if uploaded_file is not None:
                             status_text.text(f"Processing {len(images)} pages in parallel...")
 
                             # Prepare page data for parallel processing
-                            page_data = [(img, i, len(images), model_choice, debug_mode) 
+                            page_data = [(img, i, len(images), model_choice, debug_mode)
                                          for i, img in enumerate(images)]
 
                             # Process pages in parallel
@@ -580,8 +582,8 @@ if uploaded_file is not None:
             tabs = st.tabs(["Complete Document", "Page by Page", "Arabic Translation", "PDF Export"])
 
             with tabs[0]:
-                st.text_area("Complete Transcription", 
-                                st.session_state.all_text, 
+                st.text_area("Complete Transcription",
+                                st.session_state.all_text,
                                 height=500)
 
                 # Download button for complete text
@@ -597,28 +599,28 @@ if uploaded_file is not None:
                 col1, col2 = st.columns([1, 1])
 
                 # Page selection for individual viewing
-                selected_page = st.selectbox("Select page to view", range(1, len(st.session_state.page_images)+1))
+                selected_page = st.selectbox("Select page to view", range(1, len(st.session_state.page_images) + 1))
 
                 with col1:
                     # Display the selected image
                     st.image(
-                        st.session_state.page_images[selected_page-1], 
-                        caption=f"Page {selected_page}", 
+                        st.session_state.page_images[selected_page - 1],
+                        caption=f"Page {selected_page}",
                         use_container_width=True
                     )
 
                 with col2:
                     # Display the transcription for the selected page
                     st.text_area(
-                        f"Page {selected_page} Transcription", 
-                        st.session_state.transcription_results[selected_page-1], 
+                        f"Page {selected_page} Transcription",
+                        st.session_state.transcription_results[selected_page - 1],
                         height=400
                     )
 
                     # Download button for individual page
                     st.download_button(
                         label=f"Download Page {selected_page} Transcription",
-                        data=st.session_state.transcription_results[selected_page-1],
+                        data=st.session_state.transcription_results[selected_page - 1],
                         file_name=f"{uploaded_file.name.split('.')[0]}_page{selected_page}_transcription.txt",
                         mime="text/plain"
                     )
@@ -677,11 +679,11 @@ if uploaded_file is not None:
                                         # Update progress
                                         completed += 1
                                         translation_progress.progress(completed / len(page_translations))
-                                        translation_status.text(f"Translated page {i+1}/{len(page_translations)}...")
+                                        translation_status.text(f"Translated page {i + 1}/{len(page_translations)}...")
                             else:
                                 # Sequential translation
                                 for i, data in enumerate(translation_data):
-                                    translation_status.text(f"Translating page {i+1}/{len(translation_data)}...")
+                                    translation_status.text(f"Translating page {i + 1}/{len(translation_data)}...")
                                     _, translation = translate_page(data)
                                     page_translations[i] = translation
                                     translation_progress.progress((i + 1) / len(translation_data))
@@ -699,7 +701,7 @@ if uploaded_file is not None:
                 if st.session_state.translation_processed:
                     # Display the translated text
                     st.text_area(
-                        "Arabic Translation", 
+                        "Arabic Translation",
                         st.session_state.arabic_text,
                         height=500,
                         key="arabic_translation"
@@ -714,18 +716,19 @@ if uploaded_file is not None:
                     )
 
                     # If we translated page by page, show option to view individual pages
-                    if translation_mode == "Translate Page by Page (More Accurate)" and hasattr(st.session_state, 'page_translations'):
+                    if translation_mode == "Translate Page by Page (More Accurate)" and hasattr(st.session_state,
+                                                                                             'page_translations'):
                         if len(st.session_state.page_translations) > 0:
                             # Page selection for translated content
                             ar_selected_page = st.selectbox(
-                                "Select page to view Arabic translation", 
-                                range(1, len(st.session_state.page_translations)+1),
+                                "Select page to view Arabic translation",
+                                range(1, len(st.session_state.page_translations) + 1),
                                 key="ar_page_selector"
                             )
 
                             st.text_area(
-                                f"Page {ar_selected_page} Arabic Translation", 
-                                st.session_state.page_translations[ar_selected_page-1], 
+                                f"Page {ar_selected_page} Arabic Translation",
+                                st.session_state.page_translations[ar_selected_page - 1],
                                 height=300,
                                 key=f"ar_page_{ar_selected_page}"
                             )
@@ -763,7 +766,8 @@ if uploaded_file is not None:
                     content_available = True
                     content_to_export = st.session_state.all_text
                     export_title = f"{uploaded_file.name.split('.')[0]} - Transcription"
-                elif export_content == "Arabic Translation" and hasattr(st.session_state, 'translation_processed') and st.session_state.translation_processed:
+                elif export_content == "Arabic Translation" and hasattr(st.session_state, 'translation_processed') and \
+                        st.session_state.translation_processed:
                     content_available = True
                     content_to_export = st.session_state.arabic_text
                     export_title = f"{uploaded_file.name.split('.')[0]} - Arabic Translation"
@@ -776,7 +780,8 @@ if uploaded_file is not None:
                                 pdf_path = tmp_file.name
 
                             # Convert markdown to PDF
-                            success = markdown_to_pdf(content_to_export, pdf_path, title=export_title, style=selected_style)
+                            success = markdown_to_pdf(content_to_export, pdf_path, title=export_title,
+                                                      style=selected_style)
 
                             if success:
                                 # Read the generated PDF
@@ -788,21 +793,20 @@ if uploaded_file is not None:
                                 st.session_state.pdf_filename = f"{uploaded_file.name.split('.')[0]}_{export_content.lower().replace(' ', '_')}.pdf"
                                 st.session_state.pdf_generated = True
 
+                                st.success("PDF generated successfully!")
+
+                                # Display download button
+                                st.download_button(
+                                    label=f"Download {export_content} as PDF",
+                                    data=pdf_data,
+                                    file_name=st.session_state.pdf_filename,
+                                    mime="application/pdf"
+                                )
+
                                 # Clean up the temporary file
                                 os.unlink(pdf_path)
-
-                                st.success("PDF generated successfully!")
                             else:
                                 st.error("Failed to generate PDF. Please try again.")
-
-                        # Download button for PDF (only shown if PDF was generated)
-                        if hasattr(st.session_state, 'pdf_generated') and st.session_state.pdf_generated:
-                            st.download_button(
-                                label=f"Download {export_content} as PDF",
-                                data=st.session_state.pdf_data,
-                                file_name=st.session_state.pdf_filename,
-                                mime="application/pdf"
-                            )
                 else:
                     if export_content == "Arabic Translation":
                         st.info("Please translate the document to Arabic first.")
@@ -812,7 +816,7 @@ if uploaded_file is not None:
                 st.markdown("""
                 #### About PDF Export
                 - The PDF export feature converts the markdown-formatted text to a PDF document
-                - Mathematical expressions in LaTeX format are beautifully rendered using KaTeX
+                - Mathematical expressions in LaTeX format are beautifully rendered using MathJax
                 - Arabic text is fully supported with right-to-left rendering
                 - You can choose to export either the original transcription or the Arabic translation
                 - Different styling options provide flexibility for various use cases
@@ -846,12 +850,12 @@ else:
         - Enable parallel processing for faster results
         - Enable debug mode to troubleshoot API issues
         - For better translation quality, use the page-by-page option
-        - Choose different PDF styles for better reading experience
+        - Choose different PDF styles for better readingexperience
         """)
 
     # API key information box
     st.info("""
-    #### Youll need a Google Gemini API key to use this application.
+    #### You'll need a Google Gemini API key to use this application.
     - If you don't have one yet, you can get it from the [Google AI Studio](https://makersuite.google.com/app/apikey).
     - Your API key is handled securely and only stored in your browser session.
     """)
