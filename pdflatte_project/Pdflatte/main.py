@@ -13,7 +13,6 @@ import concurrent.futures
 import markdown
 import weasyprint
 import re
-from katex import render as katex_render
 import latex2mathml.converter
 
 # Page configuration
@@ -246,22 +245,22 @@ def process_latex_for_pdf(markdown_text):
     def process_display_math(match):
         latex = match.group(1).strip()
         try:
-            # Use KaTeX to render the LaTeX to HTML
-            rendered_latex = katex_render(latex, throw_on_error=False, display_mode=True)
-            return f'\n<div class="math-display">\n{rendered_latex}\n</div>\n'
+            # Use latex2mathml to convert LaTeX to MathML
+            mathml = latex2mathml.converter.convert(latex)
+            return f'\n<div class="math-display">\n{mathml}\n</div>\n'
         except Exception as e:
-            # Fallback to simpler rendering if KaTeX fails
+            # Fallback to simpler rendering if conversion fails
             return f'\n<div class="math-display">\n\\[ {latex} \\]\n</div>\n'
 
     # Function to handle inline math expressions
     def process_inline_math(match):
         latex = match.group(1).strip()
         try:
-            # Use KaTeX to render the LaTeX to HTML
-            rendered_latex = katex_render(latex, throw_on_error=False, display_mode=False)
-            return f'<span class="math-inline">{rendered_latex}</span>'
+            # Use latex2mathml to convert LaTeX to MathML
+            mathml = latex2mathml.converter.convert(latex)
+            return f'<span class="math-inline">{mathml}</span>'
         except Exception as e:
-            # Fallback to simpler rendering if KaTeX fails
+            # Fallback to simpler rendering if conversion fails
             return f'\\({latex}\\)'
 
     # Replace display math ($$...$$)
@@ -447,6 +446,26 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription", style
                     margin: {margin};
                 }}
             </style>
+
+            <!-- Include MathJax for better LaTeX rendering -->
+            <script type="text/javascript" id="MathJax-script" async
+                src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+            </script>
+            <script>
+            MathJax = {{
+                tex: {{
+                    inlineMath: [['\\\\(', '\\\\)']],
+                    displayMath: [['\\\\[', '\\\\]']],
+                    processEscapes: true
+                }},
+                svg: {{
+                    fontCache: 'global'
+                }},
+                options: {{
+                    enableMenu: false
+                }}
+            }};
+            </script>
         </head>
         <body>
             <h1>{title}</h1>
@@ -798,7 +817,7 @@ if uploaded_file is not None:
                 st.markdown("""
                 #### About PDF Export
                 - The PDF export feature converts the markdown-formatted text to a PDF document
-                - Mathematical expressions in LaTeX format are rendered properly using KaTeX
+                - Mathematical expressions in LaTeX format are rendered properly with MathML
                 - Arabic text is fully supported with right-to-left rendering
                 - You can choose to export either the original transcription or the Arabic translation
                 - Different styling options provide flexibility for various use cases
@@ -819,14 +838,14 @@ else:
         4. View the results page by page or as a complete document
         5. Download the transcription as a text file
         6. Translate to Arabic if needed
-        7. Export to PDF with proper formatting
+        7. Export to PDF for a well-formatted document
         """)
 
     with col2:
         st.markdown("""
         ### Tips:
         - PDFs with clear text work best
-        - Larger files may take more time to process
+        - Larger files maytake more time to process
         - If you encounter rate limits, wait a few minutes and try again
         - For multi-page PDFs, each page is processed individually
         - Enable parallel processing for faster results
@@ -837,7 +856,7 @@ else:
 
     # API key information box
     st.info("""
-    #### You'll need a Google Gemini API keyto use this application.
+    #### You'll need a Google Gemini API key to use this application.
     - If you don't have one yet, you can get it from the [Google AI Studio](https://makersuite.google.com/app/apikey).
     - Your API key is handled securely and only stored in your browser session.
     """)
