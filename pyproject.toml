@@ -13,5 +13,6 @@ dependencies = [
     "pillow>=11.1.0",
     "poppler-utils>=0.1.0",
     "streamlit>=1.42.2",
+    "trafilatura>=2.0.0",
     "weasyprint>=64.1",
 ]

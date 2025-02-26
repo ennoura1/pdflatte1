@@ -13,7 +13,6 @@ import concurrent.futures
 import markdown
 import weasyprint
 import re
-import latex2mathml.converter
 
 # Page configuration
 st.set_page_config(
@@ -239,29 +238,22 @@ def translate_page(page_data):
 
     return i, translation
 
+# Function to remove page headers for PDF generation
+def remove_page_headers(markdown_text):
+    # Remove ## Page X headers
+    return re.sub(r'## Page \d+\n\n', '', markdown_text)
+
 # Function to process LaTeX for better rendering in PDF
 def process_latex_for_pdf(markdown_text):
     # Function to handle display math expressions
     def process_display_math(match):
         latex = match.group(1).strip()
-        try:
-            # Use latex2mathml to convert LaTeX to MathML
-            mathml = latex2mathml.converter.convert(latex)
-            return f'\n<div class="math-display">\n{mathml}\n</div>\n'
-        except Exception as e:
-            # Fallback to simpler rendering if conversion fails
-            return f'\n<div class="math-display">\n\\[ {latex} \\]\n</div>\n'
+        return f'<div class="katex-display"><span class="katex-equation" data-latex="{latex}">$${latex}$$</span></div>'
 
     # Function to handle inline math expressions
     def process_inline_math(match):
         latex = match.group(1).strip()
-        try:
-            # Use latex2mathml to convert LaTeX to MathML
-            mathml = latex2mathml.converter.convert(latex)
-            return f'<span class="math-inline">{mathml}</span>'
-        except Exception as e:
-            # Fallback to simpler rendering if conversion fails
-            return f'\\({latex}\\)'
+        return f'<span class="katex-inline" data-latex="{latex}">\\({latex}\\)</span>'
 
     # Replace display math ($$...$$)
     markdown_text = re.sub(r'\$\$(.*?)\$\$', process_display_math, markdown_text, flags=re.DOTALL)
@@ -270,11 +262,6 @@ def process_latex_for_pdf(markdown_text):
     markdown_text = re.sub(r'\$([^\$]*?)\$', process_inline_math, markdown_text)
 
     return markdown_text
-
-# Function to remove page headers for PDF generation
-def remove_page_headers(markdown_text):
-    # Remove ## Page X headers
-    return re.sub(r'## Page \d+\n\n', '', markdown_text)
 
 # Function to convert markdown to PDF
 def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription", style="academic"):
@@ -375,7 +362,7 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription", style
                 }}
 
                 /* Math styling */
-                .math-display {{
+                .katex-display {{
                     display: block;
                     width: 100%;
                     text-align: center;
@@ -384,7 +371,7 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription", style
                     font-size: 1.1em;
                 }}
 
-                .math-inline {{
+                .katex-inline {{
                     font-size: 1.05em;
                 }}
 
@@ -447,24 +434,32 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription", style
                 }}
             </style>
 
-            <!-- Include MathJax for better LaTeX rendering -->
-            <script type="text/javascript" id="MathJax-script" async
-                src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
-            </script>
+            <!-- Include KaTeX JavaScript for rendering -->
+            <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
             <script>
-            MathJax = {{
-                tex: {{
-                    inlineMath: [['\\\\(', '\\\\)']],
-                    displayMath: [['\\\\[', '\\\\]']],
-                    processEscapes: true
-                }},
-                svg: {{
-                    fontCache: 'global'
-                }},
-                options: {{
-                    enableMenu: false
-                }}
-            }};
+                document.addEventListener("DOMContentLoaded", function() {{
+                    // Render display equations
+                    var displayEquations = document.querySelectorAll('.katex-equation');
+                    displayEquations.forEach(function(element) {{
+                        var latex = element.getAttribute('data-latex');
+                        katex.render(latex, element, {{
+                            displayMode: true,
+                            throwOnError: false,
+                            output: 'html'
+                        }});
+                    }});
+
+                    // Render inline equations
+                    var inlineEquations = document.querySelectorAll('.katex-inline');
+                    inlineEquations.forEach(function(element) {{
+                        var latex = element.getAttribute('data-latex');
+                        katex.render(latex, element, {{
+                            displayMode: false,
+                            throwOnError: false,
+                            output: 'html'
+                        }});
+                    }});
+                }});
             </script>
         </head>
         <body>
@@ -800,24 +795,24 @@ if uploaded_file is not None:
                             else:
                                 st.error("Failed to generate PDF. Please try again.")
 
-                    # Download button for PDF (only shown if PDF was generated)
-                    if hasattr(st.session_state, 'pdf_generated') and st.session_state.pdf_generated:
-                        st.download_button(
-                            label=f"Download {export_content} as PDF",
-                            data=st.session_state.pdf_data,
-                            file_name=st.session_state.pdf_filename,
-                            mime="application/pdf"
-                        )
+                        # Download button for PDF (only shown if PDF was generated)
+                        if hasattr(st.session_state, 'pdf_generated') and st.session_state.pdf_generated:
+                            st.download_button(
+                                label=f"Download {export_content} as PDF",
+                                data=st.session_state.pdf_data,
+                                file_name=st.session_state.pdf_filename,
+                                mime="application/pdf"
+                            )
                 else:
-                    if export_content == "Original Transcription":
-                        st.info("Please process a PDF document first to generate the transcription.")
+                    if export_content == "Arabic Translation":
+                        st.info("Please translate the document to Arabic first.")
                     else:
-                        st.info("Please translate the content to Arabic first.")
+                        st.info("Please process a PDF document first.")
 
                 st.markdown("""
                 #### About PDF Export
                 - The PDF export feature converts the markdown-formatted text to a PDF document
-                - Mathematical expressions in LaTeX format are rendered properly with MathML
+                - Mathematical expressions in LaTeX format are beautifully rendered using KaTeX
                 - Arabic text is fully supported with right-to-left rendering
                 - You can choose to export either the original transcription or the Arabic translation
                 - Different styling options provide flexibility for various use cases
@@ -845,7 +840,7 @@ else:
         st.markdown("""
         ### Tips:
         - PDFs with clear text work best
-        - Larger files maytake more time to process
+        - Larger files may take more time to process
         - If you encounter rate limits, wait a few minutes and try again
         - For multi-page PDFs, each page is processed individually
         - Enable parallel processing for faster results
@@ -856,7 +851,7 @@ else:
 
     # API key information box
     st.info("""
-    #### You'll need a Google Gemini API key to use this application.
+    #### Youll need a Google Gemini API key to use this application.
     - If you don't have one yet, you can get it from the [Google AI Studio](https://makersuite.google.com/app/apikey).
     - Your API key is handled securely and only stored in your browser session.
     """)
