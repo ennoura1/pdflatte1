@@ -12,6 +12,8 @@ import json
 import concurrent.futures
 import markdown
 import weasyprint
+import re
+import latex2mathml.converter
 
 # Page configuration
 st.set_page_config(
@@ -236,31 +238,45 @@ def translate_page(page_data):
 
     return i, translation
 
+# Function to convert LaTeX to MathML
+def convert_latex_to_mathml(text):
+    # Function to convert a single LaTeX expression to MathML
+    def replace_with_mathml(match):
+        latex_content = match.group(1)
+        try:
+            # Convert LaTeX to MathML
+            mathml = latex2mathml.converter.convert(latex_content)
+            return mathml
+        except Exception as e:
+            # If conversion fails, return the original LaTeX
+            return match.group(0)
+
+    # Convert display math expressions ($$...$$)
+    display_pattern = r'\$\$(.*?)\$\$'
+    text = re.sub(display_pattern, lambda m: replace_with_mathml(m), text, flags=re.DOTALL)
+
+    # Convert inline math expressions ($...$)
+    inline_pattern = r'\$(.*?)\$'
+    text = re.sub(inline_pattern, lambda m: replace_with_mathml(m), text, flags=re.DOTALL)
+
+    return text
+
 # Function to convert markdown to PDF
 def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
     try:
-        # Convert markdown to HTML with LaTeX support
-        html = markdown.markdown(markdown_text, extensions=['extra', 'codehilite'])
+        # Pre-process markdown to convert LaTeX to MathML
+        processed_text = convert_latex_to_mathml(markdown_text)
 
-        # Add MathJax support for LaTeX rendering
+        # Convert markdown to HTML
+        html = markdown.markdown(processed_text, extensions=['extra', 'codehilite'])
+
+        # Create the final HTML document
         html = f"""
         <!DOCTYPE html>
         <html>
         <head>
             <meta charset="UTF-8">
             <title>{title}</title>
-            <script type="text/javascript" async
-                src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML">
-            </script>
-            <script type="text/x-mathjax-config">
-                MathJax.Hub.Config({{
-                    tex2jax: {{
-                        inlineMath: [['$','$'], ['\\\\(','\\\\)']],
-                        displayMath: [['$$','$$'], ['\\\\[','\\\\]']],
-                        processEscapes: true
-                    }}
-                }});
-            </script>
             <style>
                 body {{
                     font-family: Arial, sans-serif;
@@ -279,11 +295,22 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
                 img {{
                     max-width: 100%;
                 }}
+                /* Math styling */
+                math {{
+                    font-size: 1.1em;
+                }}
+                /* RTL support for Arabic */
+                .rtl {{
+                    direction: rtl;
+                    text-align: right;
+                }}
             </style>
         </head>
         <body>
             <h1>{title}</h1>
-            {html}
+            <div class="{'rtl' if 'Arabic' in title else ''}">
+                {html}
+            </div>
         </body>
         </html>
         """
