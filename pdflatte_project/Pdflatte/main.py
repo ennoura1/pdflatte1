@@ -288,7 +288,7 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
             extensions=[
                 'extra',
                 'codehilite',
-                KatexExtension(output_format="html")
+                KatexExtension()
             ]
         )
 
