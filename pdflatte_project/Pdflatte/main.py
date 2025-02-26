@@ -13,6 +13,7 @@ import concurrent.futures
 import markdown
 import weasyprint
 import re
+import latex2mathml.converter
 
 # Page configuration
 st.set_page_config(
@@ -243,25 +244,37 @@ def remove_page_headers(markdown_text):
     # Remove ## Page X headers
     return re.sub(r'## Page \d+\n\n', '', markdown_text)
 
-# Function to process LaTeX for better rendering in PDF
-def process_latex_for_pdf(markdown_text):
+# Function to convert LaTeX to MathML for PDF rendering
+def convert_latex_to_mathml(text):
     # Function to handle display math expressions ($$...$$)
     def process_display_math(match):
         latex = match.group(1).strip()
-        return f'<div class="katex-display">{latex}</div>'
+        try:
+            # Convert LaTeX to MathML
+            mathml = latex2mathml.converter.convert(latex)
+            return f'<div class="math-display">{mathml}</div>'
+        except Exception as e:
+            # Fallback if conversion fails
+            return f'<div class="math-display"><pre>$${latex}$$</pre></div>'
 
     # Function to handle inline math expressions ($...$)
     def process_inline_math(match):
         latex = match.group(1).strip()
-        return f'<span class="katex-inline">{latex}</span>'
+        try:
+            # Convert LaTeX to MathML
+            mathml = latex2mathml.converter.convert(latex)
+            return f'<span class="math-inline">{mathml}</span>'
+        except Exception as e:
+            # Fallback if conversion fails
+            return f'<span class="math-inline"><pre>${latex}$</pre></span>'
 
     # Replace display math ($$...$$)
-    markdown_text = re.sub(r'\$\$(.*?)\$\$', process_display_math, markdown_text, flags=re.DOTALL)
+    text = re.sub(r'\$\$(.*?)\$\$', process_display_math, text, flags=re.DOTALL)
 
     # Replace inline math ($...$)
-    markdown_text = re.sub(r'\$([^\$]*?)\$', process_inline_math, markdown_text)
+    text = re.sub(r'\$([^\$]*?)\$', process_inline_math, text)
 
-    return markdown_text
+    return text
 
 # Function to convert markdown to PDF
 def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription", style="academic"):
@@ -269,8 +282,8 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription", style
         # Remove page headers from the markdown text
         markdown_text = remove_page_headers(markdown_text)
 
-        # Process LaTeX for better rendering
-        processed_text = process_latex_for_pdf(markdown_text)
+        # Convert LaTeX to MathML for better rendering
+        processed_text = convert_latex_to_mathml(markdown_text)
 
         # Convert markdown to HTML
         html = markdown.markdown(processed_text, extensions=['extra', 'codehilite'])
@@ -295,14 +308,13 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription", style
             line_height = "1.6"
             margin = "2cm"
 
-        # Create the final HTML document with MathJax for LaTeX rendering
+        # Create the final HTML document with MathML for LaTeX rendering
         html = f"""
         <!DOCTYPE html>
         <html>
         <head>
             <meta charset="UTF-8">
             <title>{title}</title>
-
             <style>
                 @import url('https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&display=swap');
                 @import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400;1,600&display=swap');
@@ -359,22 +371,35 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription", style
                 }}
 
                 /* Math styling */
-                .katex-display {{
+                .math-display {{
                     display: block;
                     width: 100%;
                     text-align: center;
                     margin: 1.5em 0;
                     overflow-x: auto;
                     font-size: 1.1em;
-                    font-family: 'KaTeX_Main', 'Times New Roman', serif;
-                    color: #111;
-                    padding: 0.5em 0;
                 }}
 
-                .katex-inline {{
+                .math-display math {{
+                    font-size: 1.2em;
+                }}
+
+                .math-inline {{
                     font-size: 1.05em;
-                    font-family: 'KaTeX_Main', 'Times New Roman', serif;
-                    color: #111;
+                }}
+
+                /* MathML-specific styling */
+                math {{
+                    font-size: 1.1em;
+                }}
+
+                mfrac {{
+                    line-height: 0.9em;
+                    font-size: 1.05em;
+                }}
+
+                msup, msub {{
+                    line-height: 0.5em;
                 }}
 
                 /* Tables */
@@ -431,38 +456,13 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription", style
                 }}
 
                 /* Support for LaTeX rendering */
-                .katex-display::before,
-                .katex-display::after {{
+                .math-display::before,
+                .math-display::after {{
                     content: "";
                     display: block;
                     height: 0.5em;
                 }}
             </style>
-
-            <!-- MathJax for LaTeX rendering -->
-            <script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML">
-            </script>
-            <script type="text/x-mathjax-config">
-                MathJax.Hub.Config({{
-                    tex2jax: {{
-                        inlineMath: [['\\\\(','\\\\)'], ['$', '$']],
-                        displayMath: [['\\\\[','\\\\]'], ['$$', '$$']],
-                        processEscapes: true
-                    }},
-                    "HTML-CSS": {{ 
-                        scale: 110,
-                        linebreaks: {{ automatic: true }},
-                        fonts: ["TeX"]
-                    }},
-                    CommonHTML: {{
-                        linebreaks: {{ automatic: true }}
-                    }},
-                    SVG: {{
-                        font: "TeX",
-                        linebreaks: {{ automatic: true }}
-                    }}
-                }});
-            </script>
         </head>
         <body>
             <h1>{title}</h1>
@@ -816,7 +816,7 @@ if uploaded_file is not None:
                 st.markdown("""
                 #### About PDF Export
                 - The PDF export feature converts the markdown-formatted text to a PDF document
-                - Mathematical expressions in LaTeX format are beautifully rendered using MathJax
+                - Mathematical expressions in LaTeX format are rendered directly to MathML
                 - Arabic text is fully supported with right-to-left rendering
                 - You can choose to export either the original transcription or the Arabic translation
                 - Different styling options provide flexibility for various use cases
@@ -850,7 +850,7 @@ else:
         - Enable parallel processing for faster results
         - Enable debug mode to troubleshoot API issues
         - For better translation quality, use the page-by-page option
-        - Choose different PDF styles for better readingexperience
+        - Choose different PDF styles for better reading experience
         """)
 
     # API key information box
