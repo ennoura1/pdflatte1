@@ -137,6 +137,8 @@ def transcribe_image(img, model_name="gemini-2.0-flash", debug=False):
 DO NOT WRAP YOUR ENTIRE RESPONSE IN ```markdown CODE BLOCKS.
 DO NOT prefix your response with ```markdown.
 DO NOT suffix your response with ```.
+DO NOT use any triple backtick markdown notation at all in your response.
+NEVER use the string ```markdown in your response.
 Simply deliver a well-formatted Markdown document that represents the content of the image.
 """,
             {
@@ -182,6 +184,8 @@ def translate_to_arabic(text, model_name="gemini-2.0-flash", debug=False):
         DO NOT WRAP YOUR RESPONSE IN ```markdown CODE BLOCKS.
         DO NOT prefix your response with ```markdown.
         DO NOT suffix your response with ```.
+        DO NOT use any triple backtick markdown notation at all in your response.
+        NEVER use the string ```markdown in your response.
 
         Here's the text to translate:
 
@@ -261,9 +265,17 @@ def convert_latex_to_mathml(text):
 
     return text
 
+# Function to remove page headers for PDF generation
+def remove_page_headers(markdown_text):
+    # Remove ## Page X headers
+    return re.sub(r'## Page \d+\n\n', '', markdown_text)
+
 # Function to convert markdown to PDF
 def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
     try:
+        # Remove page headers from the markdown text
+        markdown_text = remove_page_headers(markdown_text)
+
         # Pre-process markdown to convert LaTeX to MathML
         processed_text = convert_latex_to_mathml(markdown_text)
 
@@ -392,7 +404,7 @@ if uploaded_file is not None:
                         all_text = ""
                         for i, transcription in enumerate(transcription_results):
                             # Use markdown header formatting for page separators
-                            all_text += f"\n\n## Page {i+1}\n\n{transcription}"
+                            all_text += f"\n\n{transcription}"
 
                     else:
                         # Process each image individually (sequential)
@@ -405,7 +417,7 @@ if uploaded_file is not None:
                             # Process page
                             _, transcription = process_page((img, i, len(images), model_choice, debug_mode))
                             transcription_results[i] = transcription
-                            all_text += f"\n\n## Page {i+1}\n\n{transcription}"
+                            all_text += f"\n\n{transcription}"
 
                             # Update progress
                             progress_bar.progress((i + 1) / len(images))
@@ -533,7 +545,7 @@ if uploaded_file is not None:
                             # Combine translations
                             combined_translation = ""
                             for i, translation in enumerate(page_translations):
-                                combined_translation += f"\n\n## Page {i+1}\n\n{translation}"
+                                combined_translation += f"\n\n{translation}"
 
                             st.session_state.arabic_text = combined_translation.strip()
                             st.session_state.page_translations = page_translations
