@@ -9,6 +9,7 @@ import google.generativeai as genai
 from google.api_core.exceptions import GoogleAPIError
 import time
 import json
+import concurrent.futures
 
 # Page configuration
 st.set_page_config(
@@ -22,6 +23,7 @@ st.title("PDF Transcription with Google Gemini AI")
 st.markdown("""
 This application allows you to upload a PDF document and transcribe its content using Google Gemini AI.
 The PDF is converted to images and each page is processed sequentially to extract the text content.
+You can also translate the transcription to Arabic.
 """)
 
 # Sidebar for API key configuration
@@ -32,6 +34,12 @@ with st.sidebar:
     # Fixed model - only using gemini-2.0-flash
     model_choice = "gemini-2.0-flash"
     st.info(f"Using model: {model_choice}")
+
+    # Parallel processing option
+    parallel_processing = st.checkbox("Enable Parallel Processing (Faster)", value=True)
+    if parallel_processing:
+        max_workers = st.slider("Maximum Concurrent API Calls", min_value=1, max_value=5, value=3)
+        st.info(f"Using up to {max_workers} concurrent API calls")
 
     # Debug mode toggle
     debug_mode = st.checkbox("Enable Debug Mode", value=False)
@@ -63,6 +71,7 @@ with st.sidebar:
     - pdf2image for PDF to image conversion
     - Google Generative AI SDK for Gemini API integration
     - PIL (Pillow) for image processing
+    - Concurrent processing for faster results
     """)
 
 # Function to convert PDF page to images
@@ -135,6 +144,61 @@ def transcribe_image(img, model_name="gemini-2.0-flash", debug=False):
         st.error(f"Unexpected error: {str(e)}")
         return f"Transcription error: {str(e)}"
 
+# Function to translate text to Arabic
+def translate_to_arabic(text, model_name="gemini-2.0-flash", debug=False):
+    try:
+        # Create a new model instance for translation
+        model = genai.GenerativeModel(model_name)
+
+        # Create prompt for translation
+        prompt = f"""
+        Translate the following text to Arabic. If the text contains any LaTeX math expressions
+        (surrounded by $ or $$), keep those expressions exactly as they are without translating them.
+        Only translate the regular text, not the LaTeX math syntax or content.
+
+        Here's the text to translate:
+
+        {text}
+        """
+
+        if debug:
+            st.write("Sending translation request to Gemini API...")
+
+        # Generate translation
+        response = model.generate_content(prompt)
+
+        if debug:
+            st.write("Translation response received")
+
+        return response.text
+    except Exception as e:
+        st.error(f"Translation error: {str(e)}")
+        return f"Translation error: {str(e)}"
+
+# Function to process a single page - used for both sequential and parallel processing
+def process_page(page_data):
+    img, i, total_pages, model_choice, debug_mode = page_data
+
+    # If image is too large, resize it to reduce API payload size
+    if img.width > 1000 or img.height > 1000:
+        if debug_mode:
+            st.info(f"Resizing large image (original size: {img.width}x{img.height})")
+        # Calculate new dimensions while maintaining aspect ratio
+        ratio = min(1000 / img.width, 1000 / img.height)
+        new_size = (int(img.width * ratio), int(img.height * ratio))
+        img = img.resize(new_size, Image.LANCZOS)
+        if debug_mode:
+            st.info(f"Resized to: {img.width}x{img.height}")
+
+    # Add debug message for individual page processing
+    if debug_mode:
+        st.write(f"Starting new API request for page {i+1}")
+
+    # Transcribe image
+    transcription = transcribe_image(img, model_name=model_choice, debug=debug_mode)
+
+    return i, transcription
+
 # Upload PDF file
 uploaded_file = st.file_uploader("Upload a PDF document", type="pdf")
 
@@ -166,45 +230,56 @@ if uploaded_file is not None:
                     st.success(f"Successfully converted PDF to {len(images)} page images.")
 
                     # Create containers for results
-                    transcription_results = []
+                    transcription_results = [None] * len(images)  # Pre-allocate list
                     all_text = ""
                     progress_bar = st.progress(0)
                     status_text = st.empty()
 
-                    # Process each image individually
-                    for i, img in enumerate(images):
-                        status_text.text(f"Processing page {i+1}/{len(images)}...")
+                    # Determine processing method (parallel or sequential)
+                    if parallel_processing:
+                        status_text.text(f"Processing {len(images)} pages in parallel...")
 
-                        # Display the current image being processed
-                        st.image(img, caption=f"Page {i+1}", width=300)
+                        # Prepare page data for parallel processing
+                        page_data = [(img, i, len(images), model_choice, debug_mode) 
+                                     for i, img in enumerate(images)]
 
-                        # If image is too large, resize it to reduce API payload size
-                        if img.width > 1000 or img.height > 1000:
-                            st.info(f"Resizing large image (original size: {img.width}x{img.height})")
-                            # Calculate new dimensions while maintaining aspect ratio
-                            ratio = min(1000 / img.width, 1000 / img.height)
-                            new_size = (int(img.width * ratio), int(img.height * ratio))
-                            img = img.resize(new_size, Image.LANCZOS)
-                            st.info(f"Resized to: {img.width}x{img.height}")
+                        # Process pages in parallel
+                        completed = 0
+                        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                            future_to_page = {executor.submit(process_page, data): data for data in page_data}
 
-                        # Add debug message for individual page processing
-                        if debug_mode:
-                            st.write(f"Starting new API request for page {i+1}")
+                            for future in concurrent.futures.as_completed(future_to_page):
+                                i, transcription = future.result()
+                                transcription_results[i] = transcription
 
-                        # Transcribe image with the fixed model (gemini-2.0-flash)
-                        transcription = transcribe_image(img, model_name=model_choice, debug=debug_mode)
-                        transcription_results.append(transcription)
-                        all_text += f"\n\n--- PAGE {i+1} ---\n\n{transcription}"
+                                # Display the processed image
+                                st.image(images[i], caption=f"Page {i+1}", width=300)
 
-                        # Update progress
-                        progress_bar.progress((i + 1) / len(images))
+                                # Update progress
+                                completed += 1
+                                progress_bar.progress(completed / len(images))
+                                status_text.text(f"Processed page {i+1}/{len(images)}...")
 
-                        # Longer pause between API calls to avoid rate limiting
-                        # This helps ensure each page gets full API attention
-                        pause_time = 3  # Increased from 1 to 3 seconds
-                        if debug_mode:
-                            st.write(f"Pausing for {pause_time} seconds before next page...")
-                        time.sleep(pause_time)
+                        # Combine results in correct order
+                        all_text = ""
+                        for i, transcription in enumerate(transcription_results):
+                            all_text += f"\n\n--- PAGE {i+1} ---\n\n{transcription}"
+
+                    else:
+                        # Process each image individually (sequential)
+                        for i, img in enumerate(images):
+                            status_text.text(f"Processing page {i+1}/{len(images)}...")
+
+                            # Display the current image being processed
+                            st.image(img, caption=f"Page {i+1}", width=300)
+
+                            # Process page
+                            _, transcription = process_page((img, i, len(images), model_choice, debug_mode))
+                            transcription_results[i] = transcription
+                            all_text += f"\n\n--- PAGE {i+1} ---\n\n{transcription}"
+
+                            # Update progress
+                            progress_bar.progress((i + 1) / len(images))
 
                     status_text.text("Processing completed!")
 
@@ -215,11 +290,11 @@ if uploaded_file is not None:
                     st.session_state.processed = True
 
     with results_col:
-        st.subheader("Transcription Results")
+        st.subheader("Results")
 
         if 'processed' in st.session_state and st.session_state.processed:
             # Create tabs for viewing results
-            tabs = st.tabs(["Complete Document", "Page by Page"])
+            tabs = st.tabs(["Complete Document", "Page by Page", "Arabic Translation"])
 
             with tabs[0]:
                 st.text_area("Complete Transcription", 
@@ -262,6 +337,44 @@ if uploaded_file is not None:
                         file_name=f"{uploaded_file.name.split('.')[0]}_page{selected_page}_transcription.txt",
                         mime="text/plain"
                     )
+
+            with tabs[2]:
+                st.subheader("Arabic Translation")
+
+                # Button to trigger translation
+                if 'translation_processed' not in st.session_state:
+                    st.session_state.translation_processed = False
+                    st.session_state.arabic_text = ""
+
+                if st.button("Translate to Arabic"):
+                    with st.spinner("Translating to Arabic..."):
+                        # Translate the entire document
+                        arabic_text = translate_to_arabic(
+                            st.session_state.all_text,
+                            model_name=model_choice,
+                            debug=debug_mode
+                        )
+                        st.session_state.arabic_text = arabic_text
+                        st.session_state.translation_processed = True
+
+                if st.session_state.translation_processed:
+                    # Display the translated text
+                    st.text_area(
+                        "Arabic Translation", 
+                        st.session_state.arabic_text,
+                        height=500,
+                        key="arabic_translation"
+                    )
+
+                    # Download button for Arabic translation
+                    st.download_button(
+                        label="Download Arabic Translation",
+                        data=st.session_state.arabic_text,
+                        file_name=f"{uploaded_file.name.split('.')[0]}_arabic_translation.txt",
+                        mime="text/plain"
+                    )
+                else:
+                    st.info("Click 'Translate to Arabic' to generate the Arabic translation.")
 else:
     # Display sample image when no PDF is uploaded
     st.info("Please upload a PDF document to begin the transcription process.")
@@ -275,6 +388,7 @@ else:
         3. Click 'Process PDF' to start transcription
         4. View the results page by page or as a complete document
         5. Download the transcription as a text file
+        6. Translate to Arabic if needed
         """)
 
     with col2:
@@ -284,6 +398,7 @@ else:
         - Larger files may take more time to process
         - If you encounter rate limits, wait a few minutes and try again
         - For multi-page PDFs, each page is processed individually
+        - Enable parallel processing for faster results
         - Enable debug mode to troubleshoot API issues
         """)
 
