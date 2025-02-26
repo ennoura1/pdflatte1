@@ -245,28 +245,28 @@ def translate_page(page_data):
 
     return i, translation
 
-# Function to prepare LaTeX for KaTeX rendering
-def prepare_latex_for_katex(text):
-    # Function to format a single LaTeX expression for KaTeX
-    def format_for_katex(match, is_display=False):
+# Function to prepare LaTeX for MathJax rendering
+def prepare_latex_for_mathax(text):
+    # Function to format a single LaTeX expression for MathJax
+    def format_for_mathax(match, is_display=False):
         latex_content = match.group(1)
         # Escape any HTML special characters in the LaTeX content
         escaped_content = latex_content.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         
         if is_display:
-            # For display math, wrap in KaTeX display mode div
-            return f'<div class="katex-display"><span class="katex-math" data-display="true">{escaped_content}</span></div>'
+            # For display math, use proper MathJax display mode
+            return f'<div class="math-display">$${escaped_content}$$</div>'
         else:
-            # For inline math, wrap in KaTeX inline mode span
-            return f'<span class="katex-math" data-display="false">{escaped_content}</span>'
+            # For inline math, use MathJax inline mode
+            return f'<span class="math-inline">${escaped_content}$</span>'
 
-    # Format display math expressions ($$...$$)
+    # First replace display math expressions ($$...$$)
     display_pattern = r'\$\$(.*?)\$\$'
-    text = re.sub(display_pattern, lambda m: format_for_katex(m, True), text, flags=re.DOTALL)
+    text = re.sub(display_pattern, lambda m: format_for_mathax(m, True), text, flags=re.DOTALL)
 
-    # Format inline math expressions ($...$)
-    inline_pattern = r'\$(.*?)\$'
-    text = re.sub(inline_pattern, lambda m: format_for_katex(m, False), text, flags=re.DOTALL)
+    # Then replace inline math expressions ($...$) that aren't part of display math
+    inline_pattern = r'(?<!\$)\$(.*?)\$(?!\$)'
+    text = re.sub(inline_pattern, lambda m: format_for_mathax(m, False), text)
 
     return text
 
@@ -281,8 +281,8 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
         # Remove page headers from the markdown text
         markdown_text = remove_page_headers(markdown_text)
 
-        # Pre-process markdown to prepare LaTeX for KaTeX
-        processed_text = prepare_latex_for_katex(markdown_text)
+        # Pre-process markdown to prepare LaTeX for MathJax
+        processed_text = prepare_latex_for_mathax(markdown_text)
 
         # Convert markdown to HTML
         html = markdown.markdown(processed_text, extensions=['extra', 'codehilite'])
@@ -294,8 +294,10 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
         <head>
             <meta charset="UTF-8">
             <title>{title}</title>
-            <!-- KaTeX CSS -->
-            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
+            
+            <!-- MathJax for better LaTeX rendering -->
+            <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+            <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
             
             <style>
                 @import url('https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&display=swap');
@@ -339,21 +341,14 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
                     margin: 1.5em 0;
                 }}
 
-                /* KaTeX styling */
-                .katex {{
-                    font-size: 1.15em;
-                    line-height: 1.5;
+                /* MathJax styling */
+                .MathJax {{
+                    font-size: 1.1em !important;
                 }}
-                .katex-display {{
+                .math-display {{
                     margin: 1.5em 0;
-                    text-align: center;
                     overflow-x: auto;
-                    overflow-y: hidden;
-                    padding: 0.5em 0;
-                }}
-                /* Fine-tune KaTeX display */
-                .katex-display > .katex {{
-                    font-size: 1.21em; /* Larger size for display equations */
+                    text-align: center;
                 }}
                 
                 /* Tables */
@@ -396,33 +391,28 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
                 }}
             </style>
             
-            <!-- KaTeX JavaScript -->
-            <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8" crossorigin="anonymous"></script>
-            <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05" crossorigin="anonymous"></script>
             <script>
+                window.MathJax = {{
+                    tex: {{
+                        inlineMath: [['$', '$'], ['\\\\(', '\\\\)']],
+                        displayMath: [['$$', '$$'], ['\\\\[', '\\\\]']],
+                        processEscapes: true,
+                        processEnvironments: true
+                    }},
+                    options: {{
+                        ignoreHtmlClass: 'no-mathjax',
+                        processHtmlClass: 'mathjax'
+                    }},
+                    svg: {{
+                        fontCache: 'global'
+                    }}
+                }};
+                
                 document.addEventListener("DOMContentLoaded", function() {{
-                    // Auto-render KaTeX elements
-                    renderMathInElement(document.body, {{
-                        delimiters: [
-                            {{left: '$$', right: '$$', display: true}},
-                            {{left: '$', right: '$', display: false}}
-                        ],
-                        throwOnError: false
-                    }});
-                    
-                    // Render all elements with katex-math class manually
-                    document.querySelectorAll('.katex-math').forEach(function(element) {{
-                        try {{
-                            const isDisplay = element.getAttribute('data-display') === 'true';
-                            katex.render(element.textContent, element, {{
-                                displayMode: isDisplay,
-                                throwOnError: false,
-                                output: 'html'
-                            }});
-                        }} catch (e) {{
-                            console.error("KaTeX rendering error:", e);
-                        }}
-                    }});
+                    // MathJax will automatically process the document
+                    if (typeof MathJax !== 'undefined') {{
+                        MathJax.typeset();
+                    }}
                 }});
             </script>
         </head>
@@ -552,15 +542,28 @@ if uploaded_file is not None:
 
                 # Add a preview option with LaTeX rendering
                 if st.checkbox("Show Preview with LaTeX Rendering"):
-                    # Use HTML to render markdown with KaTeX support
+                    # Use HTML to render markdown with MathJax support (better LaTeX rendering)
                     st.markdown("""
-                    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
-                    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-                    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body);"></script>
+                    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+                    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+                    <style>
+                        .math-container {
+                            overflow-x: auto;
+                            padding: 8px 0;
+                            font-size: 1.1em;
+                        }
+                        .MathJax {
+                            font-size: 110% !important;
+                        }
+                    </style>
                     """, unsafe_allow_html=True)
                     
-                    # Show the rendered markdown
-                    st.markdown(st.session_state.all_text, unsafe_allow_html=True)
+                    # Wrap the content in a div for better MathJax processing
+                    st.markdown(f"""
+                    <div class="math-container">
+                        {st.session_state.all_text}
+                    </div>
+                    """, unsafe_allow_html=True)
 
                 # Download button for complete text
                 st.download_button(
