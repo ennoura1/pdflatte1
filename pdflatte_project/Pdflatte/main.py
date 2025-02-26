@@ -86,7 +86,8 @@ def convert_pdf_to_images(pdf_file):
 # Function to transcribe an image using Gemini
 def transcribe_image(img, model_name="gemini-2.0-flash", debug=False):
     try:
-        # Create a generative model instance
+        # Create a NEW generative model instance for each request
+        # This ensures no context bleeding between requests
         model = genai.GenerativeModel(model_name)
 
         # Convert PIL Image to bytes
@@ -170,7 +171,7 @@ if uploaded_file is not None:
                     progress_bar = st.progress(0)
                     status_text = st.empty()
 
-                    # Process each image
+                    # Process each image individually
                     for i, img in enumerate(images):
                         status_text.text(f"Processing page {i+1}/{len(images)}...")
 
@@ -186,6 +187,10 @@ if uploaded_file is not None:
                             img = img.resize(new_size, Image.LANCZOS)
                             st.info(f"Resized to: {img.width}x{img.height}")
 
+                        # Add debug message for individual page processing
+                        if debug_mode:
+                            st.write(f"Starting new API request for page {i+1}")
+
                         # Transcribe image with the fixed model (gemini-2.0-flash)
                         transcription = transcribe_image(img, model_name=model_choice, debug=debug_mode)
                         transcription_results.append(transcription)
@@ -194,8 +199,12 @@ if uploaded_file is not None:
                         # Update progress
                         progress_bar.progress((i + 1) / len(images))
 
-                        # Brief pause to avoid rate limiting
-                        time.sleep(1)
+                        # Longer pause between API calls to avoid rate limiting
+                        # This helps ensure each page gets full API attention
+                        pause_time = 3  # Increased from 1 to 3 seconds
+                        if debug_mode:
+                            st.write(f"Pausing for {pause_time} seconds before next page...")
+                        time.sleep(pause_time)
 
                     status_text.text("Processing completed!")
 
@@ -214,8 +223,8 @@ if uploaded_file is not None:
 
             with tabs[0]:
                 st.text_area("Complete Transcription", 
-                              st.session_state.all_text, 
-                              height=500)
+                               st.session_state.all_text, 
+                               height=500)
 
                 # Download button for complete text
                 st.download_button(
@@ -236,7 +245,7 @@ if uploaded_file is not None:
                     st.image(
                         st.session_state.page_images[selected_page-1], 
                         caption=f"Page {selected_page}", 
-                        use_column_width=True
+                        use_container_width=True
                     )
 
                 with col2:
