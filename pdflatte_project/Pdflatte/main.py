@@ -437,7 +437,8 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
         # Create font configuration
         font_config = FontConfiguration()
         
-        # Convert HTML to PDF with improved font handling
+        # Convert HTML to PDF with correct font configuration
+        font_config = FontConfiguration()
         pdf = HTML(string=html_doc).write_pdf(font_config=font_config)
 
         # Write PDF to file
