@@ -132,7 +132,9 @@ def transcribe_image(img, model_name="gemini-2.0-flash", debug=False):
 9. Use proper heading levels to maintain document hierarchy
 10. Use code blocks with ``` for code snippets
 
-Do not add any explanatory text or commentary to your transcription.
+DO NOT WRAP YOUR ENTIRE RESPONSE IN ```markdown CODE BLOCKS.
+DO NOT prefix your response with ```markdown.
+DO NOT suffix your response with ```.
 Simply deliver a well-formatted Markdown document that represents the content of the image.
 """,
             {
@@ -174,6 +176,10 @@ def translate_to_arabic(text, model_name="gemini-2.0-flash", debug=False):
         (surrounded by $ or $$), keep those expressions exactly as they are without translating them.
         Only translate the regular text, not the LaTeX math syntax or content.
         Format your response in Markdown for proper rendering.
+
+        DO NOT WRAP YOUR RESPONSE IN ```markdown CODE BLOCKS.
+        DO NOT prefix your response with ```markdown.
+        DO NOT suffix your response with ```.
 
         Here's the text to translate:
 
