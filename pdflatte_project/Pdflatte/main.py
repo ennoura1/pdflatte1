@@ -471,7 +471,7 @@ def create_copy_button(text, button_label="Copy All Text"):
     copy_button_html = f"""
     {get_copy_button_js()}
     <button id="{button_id}" 
-            onclick="copyToClipboard({js_text});" 
+            onclick='copyToClipboard({js_text});' 
             style="background-color: #4CAF50; color: white; padding: 8px 16px; 
                    border: none; border-radius: 4px; cursor: pointer; 
                    font-size: 14px; margin: 5px 0; display: inline-flex; 
