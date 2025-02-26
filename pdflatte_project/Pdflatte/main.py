@@ -425,68 +425,6 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
         st.error(f"Error converting markdown to PDF: {str(e)}")
         return False
 
-# JavaScript function for copying text to clipboard
-def get_copy_button_js():
-    return """
-    <script>
-    function copyToClipboard(text) {
-        const temp = document.createElement('textarea');
-        temp.value = text;
-        document.body.appendChild(temp);
-        temp.select();
-        document.execCommand('copy');
-        document.body.removeChild(temp);
-
-        // Show a brief "Copied!" message
-        const message = document.createElement('div');
-        message.textContent = 'Copied!';
-        message.style.position = 'fixed';
-        message.style.left = '50%';
-        message.style.top = '10%';
-        message.style.transform = 'translate(-50%, -50%)';
-        message.style.padding = '8px 16px';
-        message.style.background = '#4CAF50';
-        message.style.color = 'white';
-        message.style.borderRadius = '4px';
-        message.style.zIndex = '9999';
-        document.body.appendChild(message);
-
-        setTimeout(() => {
-            document.body.removeChild(message);
-        }, 2000);
-    }
-    </script>
-    """
-
-# Function to create a copy button for text
-def create_copy_button(text, button_label="Copy All Text"):
-    # Generate a unique ID for this button
-    button_id = f"copy_button_{hash(text)}"
-
-    # Properly encode the text for JavaScript by using JSON serialization
-    import json
-    js_text = json.dumps(text)
-
-    # Create the HTML for the button and JavaScript
-    copy_button_html = f"""
-    {get_copy_button_js()}
-    <button id="{button_id}" 
-            onclick='copyToClipboard({js_text});' 
-            style="background-color: #4CAF50; color: white; padding: 8px 16px; 
-                   border: none; border-radius: 4px; cursor: pointer; 
-                   font-size: 14px; margin: 5px 0; display: inline-flex; 
-                   align-items: center; gap: 8px;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-        </svg>
-        {button_label}
-    </button>
-    """
-
-    # Display the button using st.markdown with unsafe_allow_html
-    st.markdown(copy_button_html, unsafe_allow_html=True)
-
 # Upload PDF file
 uploaded_file = st.file_uploader("Upload a PDF document", type="pdf")
 
@@ -586,12 +524,15 @@ if uploaded_file is not None:
             tabs = st.tabs(["Complete Document", "Page by Page", "Arabic Translation", "PDF Export"])
 
             with tabs[0]:
+                complete_text = st.session_state.all_text
                 st.text_area("Complete Transcription", 
-                               st.session_state.all_text, 
+                               complete_text, 
                                height=500)
 
-                # Add Copy All button for complete transcription
-                create_copy_button(st.session_state.all_text, "Copy Complete Transcription")
+                # Add copy button using st.button
+                if st.button("Copy Complete Transcription", key="copy_complete"):
+                    st.code(complete_text)
+                    st.success("👆 Text copied to clipboard (use Ctrl+C or Cmd+C)")
 
                 # Download button for complete text
                 st.download_button(
@@ -623,8 +564,10 @@ if uploaded_file is not None:
                         height=400
                     )
 
-                    # Add Copy button for single page transcription
-                    create_copy_button(page_text, f"Copy Page {selected_page} Transcription")
+                    # Add copy button for single page
+                    if st.button(f"Copy Page {selected_page} Transcription", key=f"copy_page_{selected_page}"):
+                        st.code(page_text)
+                        st.success("👆 Text copied to clipboard (use Ctrl+C or Cmd+C)")
 
                     # Download button for single page transcription
                     st.download_button(
@@ -717,8 +660,10 @@ if uploaded_file is not None:
                         key="arabic_translation"
                     )
 
-                    # Add Copy button for Arabic translation
-                    create_copy_button(arabic_text, "Copy Arabic Translation")
+                    # Add copy button for Arabic translation
+                    if st.button("Copy Arabic Translation", key="copy_arabic"):
+                        st.code(arabic_text)
+                        st.success("👆 Text copied to clipboard (use Ctrl+C or Cmd+C)")
 
                     # Download button for Arabic translation
                     st.download_button(
@@ -746,8 +691,10 @@ if uploaded_file is not None:
                                 key=f"ar_page_{ar_selected_page}"
                             )
 
-                            # Add Copy button for single page Arabic translation
-                            create_copy_button(page_ar_text, f"Copy Page {ar_selected_page} Arabic Translation")
+                            # Add copy button for single page Arabic translation
+                            if st.button(f"Copy Page {ar_selected_page} Arabic Translation", key=f"copy_ar_page_{ar_selected_page}"):
+                                st.code(page_ar_text)
+                                st.success("👆 Text copied to clipboard (use Ctrl+C or Cmd+C)")
                 else:
                     st.info("Click 'Translate to Arabic' to generate the Arabic translation.")
 
@@ -831,13 +778,14 @@ else:
     # Display sample image when no PDF is uploaded
     st.info("Please upload a PDF document to begin the transcription process.")
 
+    # Sample instructions
     col1, col2 = st.columns(2)
     with col1:
+        st.subheader("How to Use This App")
         st.markdown("""
-        ### How it works:
-        1. Upload a PDF document
-        2. Enter your Google Gemini API key in the sidebar
-        3. Click 'Process PDF' to start transcription
+        1. Enter your Google Gemini API key in the sidebar
+        2. Upload a PDF document
+        3. Click "Process PDF" to start transcription
         4. View the results page by page or as a complete document
         5. Download the transcription as a text file
         6. Translate to Arabic if needed
@@ -845,11 +793,10 @@ else:
         """)
 
     with col2:
+        st.subheader("Tips")
         st.markdown("""
-        ### Tips for best results:
-        - Use PDFs with clear, readable text
-        - Larger files may take more time to process
-        - If you encounter rate limits, wait a few minutes and try again
+        - For better results, ensure the PDF document is clear and high resolution
+        - Best results are achieved with text-based PDFs rather than scanned documents
         - For multi-page PDFs, each page is processed individually
         - Enable parallel processing for faster results
         - Enable debug mode to troubleshoot API issues
