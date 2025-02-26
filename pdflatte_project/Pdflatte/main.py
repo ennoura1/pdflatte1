@@ -119,7 +119,22 @@ def transcribe_image(img, model_name="gemini-2.0-flash", debug=False):
 
         # Create prompt parts with the image following Google's Python format
         prompt_parts = [
-            "Please transcribe all the text content from this image accurately. Format your response using Markdown syntax. Preserve paragraphs, bullet points, and overall formatting. For ALL mathematical expressions and equations, provide them in proper LaTeX format surrounded by $ for inline math or $$ for display math. This is critical for proper rendering. Do not add any explanatory text or commentary to your transcription.",
+            """Please transcribe all the text content from this image accurately. Format your response using proper Markdown syntax with these requirements:
+
+1. Use # for main titles, ## for subtitles, and ### for section headers
+2. Use **bold** for emphasis and important terms
+3. Use *italics* for emphasized phrases or references
+4. Structure paragraphs with proper line breaks
+5. Use proper Markdown lists (- or 1. for numbered lists)
+6. For ALL mathematical expressions and equations, provide them in proper LaTeX format surrounded by $ for inline math or $$ for display math (this is critical for proper rendering)
+7. Format tables using Markdown table syntax
+8. Use > for quoted text
+9. Use proper heading levels to maintain document hierarchy
+10. Use code blocks with ``` for code snippets
+
+Do not add any explanatory text or commentary to your transcription.
+Simply deliver a well-formatted Markdown document that represents the content of the image.
+""",
             {
                 "mime_type": "image/png", 
                 "data": img_b64
@@ -343,7 +358,8 @@ if uploaded_file is not None:
                         # Combine results in correct order
                         all_text = ""
                         for i, transcription in enumerate(transcription_results):
-                            all_text += f"\n\n--- PAGE {i+1} ---\n\n{transcription}"
+                            # Use markdown header formatting for page separators
+                            all_text += f"\n\n## Page {i+1}\n\n{transcription}"
 
                     else:
                         # Process each image individually (sequential)
@@ -356,7 +372,7 @@ if uploaded_file is not None:
                             # Process page
                             _, transcription = process_page((img, i, len(images), model_choice, debug_mode))
                             transcription_results[i] = transcription
-                            all_text += f"\n\n--- PAGE {i+1} ---\n\n{transcription}"
+                            all_text += f"\n\n## Page {i+1}\n\n{transcription}"
 
                             # Update progress
                             progress_bar.progress((i + 1) / len(images))
@@ -484,7 +500,7 @@ if uploaded_file is not None:
                             # Combine translations
                             combined_translation = ""
                             for i, translation in enumerate(page_translations):
-                                combined_translation += f"\n\n--- PAGE {i+1} ---\n\n{translation}"
+                                combined_translation += f"\n\n## Page {i+1}\n\n{translation}"
 
                             st.session_state.arabic_text = combined_translation.strip()
                             st.session_state.page_translations = page_translations
