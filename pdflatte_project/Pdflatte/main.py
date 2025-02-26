@@ -35,8 +35,12 @@ with st.sidebar:
     st.header("Configuration")
     api_key = st.text_input("Enter your Google Gemini API Key", type="password")
 
-    # Fixed model - only using gemini-2.0-flash
-    model_choice = "gemini-2.0-flash"
+    # Model selection
+    model_choice = st.selectbox(
+        "Choose Gemini Model",
+        ["gemini-2.0-flash", "gemini-2.0-pro-exp-02-05"],
+        index=0
+    )
     st.info(f"Using model: {model_choice}")
 
     # Parallel processing option
@@ -290,31 +294,113 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
             <meta charset="UTF-8">
             <title>{title}</title>
             <style>
+                @import url('https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&display=swap');
+                @import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400;1,600&display=swap');
+
                 body {{
-                    font-family: Arial, sans-serif;
-                    line-height: 1.6;
-                    margin: 2em;
+                    font-family: 'Merriweather', 'Georgia', serif;
+                    line-height: 1.8;
+                    margin: 3em;
+                    color: #333;
+                    font-size: 11pt;
                 }}
-                h1, h2, h3 {{
-                    color: #2c3e50;
+                h1, h2, h3, h4, h5, h6 {{
+                    font-family: 'Source Sans Pro', 'Helvetica', sans-serif;
+                    color: #1a1a1a;
+                    margin-top: 1.5em;
+                    margin-bottom: 0.8em;
+                    line-height: 1.2;
+                }}
+                h1 {{ font-size: 24pt; font-weight: 700; }}
+                h2 {{ font-size: 20pt; font-weight: 600; }}
+                h3 {{ font-size: 16pt; font-weight: 600; }}
+
+                p {{
+                    margin-bottom: 1.2em;
+                    text-align: justify;
                 }}
                 pre {{
                     background-color: #f8f8f8;
-                    border: 1px solid #ddd;
-                    padding: 10px;
-                    border-radius: 3px;
+                    border: 1px solid #e0e0e0;
+                    padding: 12px;
+                    border-radius: 4px;
+                    font-size: 10pt;
+                    overflow-x: auto;
+                    line-height: 1.4;
                 }}
                 img {{
                     max-width: 100%;
+                    height: auto;
+                    margin: 1.5em 0;
                 }}
+
                 /* Math styling */
                 math {{
-                    font-size: 1.1em;
+                    font-size: 1.15em;
+                    font-weight: normal;
+                    line-height: 1.5;
                 }}
+                math > mfrac {{
+                    font-size: 1.15em;
+                    line-height: 1.5;
+                    vertical-align: -0.5em;
+                }}
+                math > msup, math > msub {{
+                    line-height: 1;
+                }}
+                math > mi, math > mn {{
+                    font-style: normal;
+                    padding: 0 0.1em;
+                }}
+                math > mo {{
+                    padding: 0 0.2em;
+                }}
+
+                /* Equations spacing */
+                math[display="block"] {{
+                    display: block;
+                    text-align: center;
+                    margin: 1.5em 0;
+                    text-indent: 0;
+                }}
+
+                /* Tables */
+                table {{
+                    border-collapse: collapse;
+                    width: 100%;
+                    margin: 1.5em 0;
+                }}
+                th, td {{
+                    padding: 8px 12px;
+                    border: 1px solid #e0e0e0;
+                }}
+                th {{
+                    background-color: #f5f5f5;
+                    font-weight: 600;
+                }}
+
+                /* Quotes */
+                blockquote {{
+                    border-left: 4px solid #e0e0e0;
+                    padding-left: 1em;
+                    margin-left: 0;
+                    font-style: italic;
+                }}
+
                 /* RTL support for Arabic */
                 .rtl {{
                     direction: rtl;
                     text-align: right;
+                    font-family: 'Amiri', 'Traditional Arabic', serif;
+                    line-height: 1.8;
+                }}
+                .rtl h1, .rtl h2, .rtl h3, .rtl h4, .rtl h5, .rtl h6 {{
+                    font-family: 'Amiri', 'Traditional Arabic', serif;
+                }}
+
+                /* Print-specific styles */
+                @page {{
+                    margin: 2.5cm 2cm;
                 }}
             </style>
         </head>
@@ -596,6 +682,13 @@ if uploaded_file is not None:
                     "Select content to export as PDF",
                     ["Original Transcription", "Arabic Translation"],
                     key="export_content"
+                )
+
+                # Select PDF quality/style
+                pdf_style = st.radio(
+                    "PDF Export Style",
+                    ["Standard", "Academic Journal", "Book Style"],
+                    key="pdf_style"
                 )
 
                 # Check if we have the selected content available
