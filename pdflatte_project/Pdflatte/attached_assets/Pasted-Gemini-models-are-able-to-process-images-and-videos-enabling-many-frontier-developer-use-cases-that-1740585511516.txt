@@ -1,0 +1,140 @@
+Gemini models are able to process images and videos, enabling many frontier developer use cases that would have historically required domain specific models. Some of Gemini's vision capabilities include the ability to:
+
+Caption and answer questions about images
+Transcribe and reason over PDFs, including up to 2 million tokens
+Describe, segment, and extract information from videos up to 90 minutes long
+Detect objects in an image and return bounding box coordinates for them
+Gemini was built to be multimodal from the ground up and we continue to push the frontier of what is possible.
+
+Image input
+
+For total image payload size less than 20MB, we recommend either uploading base64 encoded images or directly uploading locally stored image files.
+
+Working with local images
+
+If you are using the Python imaging library (Pillow), you can use PIL image objects too.
+
+
+from google import genai
+from google.genai import types
+
+import PIL.Image
+
+image = PIL.Image.open('/path/to/image.png')
+
+client = genai.Client(api_key="GEMINI_API_KEY")
+response = client.models.generate_content(
+    model="gemini-2.0-flash",
+    contents=["What is this image?", image])
+
+print(response.text)
+Base64 encoded images
+
+You can upload public image URLs by encoding them as Base64 payloads. The following code example shows how to do this using only standard library tools:
+
+
+from google import genai
+from google.genai import types
+
+import requests
+
+image_path = "https://goo.gle/instrument-img"
+image = requests.get(image_path)
+
+client = genai.Client(api_key="GEMINI_API_KEY")
+response = client.models.generate_content(
+    model="gemini-2.0-flash-exp",
+    contents=["What is this image?",
+              types.Part.from_bytes(data=image.content, mime_type="image/jpeg")])
+
+print(response.text)
+Multiple images
+
+To prompt with multiple images, you can provide multiple images in the call to generate_content. These can be in any supported format, including base64 or PIL.
+
+
+from google import genai
+from google.genai import types
+
+import pathlib
+import PIL.Image
+
+image_path_1 = "path/to/your/image1.jpeg"  # Replace with the actual path to your first image
+image_path_2 = "path/to/your/image2.jpeg" # Replace with the actual path to your second image
+
+image_url_1 = "https://goo.gle/instrument-img" # Replace with the actual URL to your third image
+
+pil_image = PIL.Image.open(image_path_1)
+
+b64_image = types.Part.from_bytes(
+    data=pathlib.Path(image_path_2).read_bytes(),
+    mime_type="image/jpeg"
+)
+
+downloaded_image = requests.get(image_url_1)
+
+client = genai.Client(api_key="GEMINI_API_KEY")
+response = client.models.generate_content(
+    model="gemini-2.0-flash-exp",
+    contents=["What do these images have in common?",
+              pil_image, b64_image, downloaded_image])
+
+print(response.text)
+Note that these inline data calls don't include many of the features available through the File API, such as getting file metadata, listing, or deleting files.
+
+Large image payloads
+
+When the combination of files and system instructions that you intend to send is larger than 20 MB in size, use the File API to upload those files.
+
+Use the media.upload method of the File API to upload an image of any size.
+
+Note: The File API lets you store up to 20 GB of files per project, with a per-file maximum size of 2 GB. Files are stored for 48 hours. They can be accessed in that period with your API key, but cannot be downloaded from the API. It is available at no cost in all regions where the Gemini API is available.
+After uploading the file, you can make GenerateContent requests that reference the File API URI. Select the generative model and provide it with a text prompt and the uploaded image.
+
+
+from google import genai
+
+client = genai.Client(api_key="GEMINI_API_KEY")
+
+img_path = "/path/to/Cajun_instruments.jpg"
+file_ref = client.files.upload(file=img_path)
+print(f'{file_ref=}')
+
+client = genai.Client(api_key="GEMINI_API_KEY")
+response = client.models.generate_content(
+    model="gemini-2.0-flash-exp",
+    contents=["What can you tell me about these instruments?",
+              file_ref])
+
+print(response.text)
+OpenAI Compatibility
+
+You can access Gemini's image understanding capabilities using the OpenAI libraries. This lets you integrate Gemini into existing OpenAI workflows by updating three lines of code and using your Gemini API key. See the Image understanding example for code demonstrating how to send images encoded as Base64 payloads.
+
+Prompting with images
+
+In this tutorial, you will upload images using the File API or as inline data and generate content based on those images.
+
+Technical details (images)
+
+Gemini 2.0 Flash, 1.5 Pro, and 1.5 Flash support a maximum of 3,600 image files.
+
+Images must be in one of the following image data MIME types:
+
+PNG - image/png
+JPEG - image/jpeg
+WEBP - image/webp
+HEIC - image/heic
+HEIF - image/heif
+Tokens
+
+Here's how tokens are calculated for images:
+
+Gemini 1.0 Pro Vision: Each image accounts for 258 tokens.
+Gemini 1.5 Flash and Gemini 1.5 Pro: If both dimensions of an image are less than or equal to 384 pixels, then 258 tokens are used. If one dimension of an image is greater than 384 pixels, then the image is cropped into tiles. Each tile size defaults to the smallest dimension (width or height) divided by 1.5. If necessary, each tile is adjusted so that it's not smaller than 256 pixels and not greater than 768 pixels. Each tile is then resized to 768x768 and uses 258 tokens.
+Gemini 2.0 Flash: Image inputs with both dimensions <=384 pixels are counted as 258 tokens. Images larger in one or both dimensions are cropped and scaled as needed into tiles of 768x768 pixels, each counted as 258 tokens.
+For best results
+
+Rotate images to the correct orientation before uploading.
+Avoid blurry images.
+If using a single image, place the text prompt after the image.

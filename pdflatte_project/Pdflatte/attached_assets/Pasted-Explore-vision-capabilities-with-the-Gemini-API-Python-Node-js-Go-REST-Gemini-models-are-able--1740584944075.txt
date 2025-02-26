@@ -1,0 +1,208 @@
+Explore vision capabilities with the Gemini API
+
+
+Python  Node.js  Go  REST
+
+Gemini models are able to process images and videos, enabling many frontier developer use cases that would have historically required domain specific models. Some of Gemini's vision capabilities include the ability to:
+
+Caption and answer questions about images
+Transcribe and reason over PDFs, including up to 2 million tokens
+Describe, segment, and extract information from videos up to 90 minutes long
+Detect objects in an image and return bounding box coordinates for them
+Gemini was built to be multimodal from the ground up and we continue to push the frontier of what is possible.
+
+Image input
+
+For total image payload size less than 20MB, we recommend either uploading base64 encoded images or directly uploading locally stored image files.
+
+Working with local images
+
+If you have the files you want to send to Gemini locally, you can directly pass them in the request to the model:
+
+
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import fs from "fs";
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+// Converts local file information to base64
+function fileToGenerativePart(path, mimeType) {
+  return {
+    inlineData: {
+      data: Buffer.from(fs.readFileSync(path)).toString("base64"),
+      mimeType
+    },
+  };
+}
+
+async function run() {
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+
+  const prompt = "Write an advertising jingle showing how the product in the first image could solve the problems shown in the second two images.";
+
+  const imageParts = [
+    fileToGenerativePart("jetpack.jpg", "image/jpeg"),
+    fileToGenerativePart("piranha.jpg", "image/jpeg"),
+  ];
+
+  const generatedContent = await model.generateContent([prompt, ...imageParts]);
+  
+  console.log(generatedContent.response.text());
+}
+
+run();
+Note that these inline data calls don't include many of the features available through the File API, such as getting file metadata, listing, or deleting files.
+
+Base64 encoded images
+
+You can upload public image URLs by encoding them as Base64 payloads. We recommend using the httpx library to fetch the image URLs. The following code example shows how to do this:
+
+
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
+// Access your API key as an environment variable (see "Set up your API key" above)
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+const model = genAI.getGenerativeModel({ model: 'models/gemini-1.5-pro' });
+
+const imageResp = await fetch(
+    'https://upload.wikimedia.org/wikipedia/commons/thumb/8/87/Palace_of_Westminster_from_the_dome_on_Methodist_Central_Hall.jpg/2560px-Palace_of_Westminster_from_the_dome_on_Methodist_Central_Hall.jpg'
+)
+    .then((response) => response.arrayBuffer());
+
+const result = await model.generateContent([
+    {
+        inlineData: {
+            data: Buffer.from(imageResp).toString("base64"),
+            mimeType: "image/jpeg",
+        },
+    },
+    'Caption this image.',
+]);
+console.log(result.response.text());
+Multiple images
+
+To prompt with multiple images in Base64 encoded format, you can do the following:
+
+
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
+// Access your API key as an environment variable (see "Set up your API key" above)
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+const model = genAI.getGenerativeModel({ model: 'models/gemini-1.5-pro' });
+
+const imageResp1 = await fetch(IMAGE_PATH_1).then((response) => response.arrayBuffer());
+const imageResp2 = await fetch(IMAGE_PATH_2).then((response) => response.arrayBuffer());
+
+const result = await model.generateContent([
+    {
+        inlineData: {
+            data: Buffer.from(imageResp1).toString("base64"),
+            mimeType: "image/jpeg",
+        },
+    },
+    {
+        inlineData: {
+            data: Buffer.from(imageResp2).toString("base64"),
+            mimeType: "image/jpeg",
+        },
+    },
+    'Generate a list of all the objects contained in both images.',
+]);
+console.log(result.response.text());
+
+Upload an image and generate content
+
+When the combination of files and system instructions that you intend to send is larger than 20 MB in size, use the File API to upload those files.
+
+Use the media.upload method of the File API to upload an image of any size.
+
+Note: The File API lets you store up to 20 GB of files per project, with a per-file maximum size of 2 GB. Files are stored for 48 hours. They can be accessed in that period with your API key, but cannot be downloaded from the API. It is available at no cost in all regions where the Gemini API is available.
+After uploading the file, you can make GenerateContent requests that reference the File API URI. Select the generative model and provide it with a text prompt and the uploaded image.
+
+
+// Make sure to include these imports:
+// import { GoogleAIFileManager } from "@google/generative-ai/server";
+// import { GoogleGenerativeAI } from "@google/generative-ai";
+const fileManager = new GoogleAIFileManager(process.env.API_KEY);
+
+const uploadResult = await fileManager.uploadFile(
+  `${mediaPath}/jetpack.jpg`,
+  {
+    mimeType: "image/jpeg",
+    displayName: "Jetpack drawing",
+  },
+);
+// View the response.
+console.log(
+  `Uploaded file ${uploadResult.file.displayName} as: ${uploadResult.file.uri}`,
+);
+
+const genAI = new GoogleGenerativeAI(process.env.API_KEY);
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const result = await model.generateContent([
+  "Tell me about this image.",
+  {
+    fileData: {
+      fileUri: uploadResult.file.uri,
+      mimeType: uploadResult.file.mimeType,
+    },
+  },
+]);
+console.log(result.response.text());
+Verify image file upload and get metadata
+
+You can verify the API successfully stored the uploaded file and get its metadata by calling files.get. Only the name (and by extension, the uri) are unique.
+
+
+// Make sure to include these imports:
+// import { GoogleAIFileManager } from "@google/generative-ai/server";
+const fileManager = new GoogleAIFileManager(process.env.API_KEY);
+
+const uploadResponse = await fileManager.uploadFile(
+  `${mediaPath}/jetpack.jpg`,
+  {
+    mimeType: "image/jpeg",
+    displayName: "Jetpack drawing",
+  },
+);
+
+// Get the previously uploaded file's metadata.
+const getResponse = await fileManager.getFile(uploadResponse.file.name);
+
+// View the response.
+console.log(
+  `Retrieved file ${getResponse.displayName} as ${getResponse.uri}`,
+);
+OpenAI Compatibility
+
+You can access Gemini's image understanding capabilities using the OpenAI libraries. This lets you integrate Gemini into existing OpenAI workflows by updating three lines of code and using your Gemini API key. See the Image understanding example for code demonstrating how to send images encoded as Base64 payloads.
+
+Prompting with images
+
+In this tutorial, you will upload images using the File API or as inline data and generate content based on those images.
+
+Technical details (images)
+
+Gemini 2.0 Flash, 1.5 Pro, and 1.5 Flash support a maximum of 3,600 image files.
+
+Images must be in one of the following image data MIME types:
+
+PNG - image/png
+JPEG - image/jpeg
+WEBP - image/webp
+HEIC - image/heic
+HEIF - image/heif
+Tokens
+
+Here's how tokens are calculated for images:
+
+Gemini 1.0 Pro Vision: Each image accounts for 258 tokens.
+Gemini 1.5 Flash and Gemini 1.5 Pro: If both dimensions of an image are less than or equal to 384 pixels, then 258 tokens are used. If one dimension of an image is greater than 384 pixels, then the image is cropped into tiles. Each tile size defaults to the smallest dimension (width or height) divided by 1.5. If necessary, each tile is adjusted so that it's not smaller than 256 pixels and not greater than 768 pixels. Each tile is then resized to 768x768 and uses 258 tokens.
+Gemini 2.0 Flash: Image inputs with both dimensions <=384 pixels are counted as 258 tokens. Images larger in one or both dimensions are cropped and scaled as needed into tiles of 768x768 pixels, each counted as 258 tokens.
+For best results
+
+Rotate images to the correct orientation before uploading.
+Avoid blurry images.
+If using a single image, place the text prompt after the image.
