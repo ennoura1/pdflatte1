@@ -13,6 +13,7 @@ import concurrent.futures
 import markdown
 import weasyprint
 import re
+import latex2mathml.converter
 
 # Page configuration
 st.set_page_config(
@@ -245,28 +246,26 @@ def translate_page(page_data):
 
     return i, translation
 
-# Function to prepare LaTeX for MathJax rendering
-def prepare_latex_for_mathax(text):
-    # Function to format a single LaTeX expression for MathJax
-    def format_for_mathax(match, is_display=False):
+# Function to convert LaTeX to MathML
+def convert_latex_to_mathml(text):
+    # Function to convert a single LaTeX expression to MathML
+    def replace_with_mathml(match):
         latex_content = match.group(1)
-        # Escape any HTML special characters in the LaTeX content
-        escaped_content = latex_content.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-        
-        if is_display:
-            # For display math, use proper MathJax display mode
-            return f'<div class="math-display">$${escaped_content}$$</div>'
-        else:
-            # For inline math, use MathJax inline mode
-            return f'<span class="math-inline">${escaped_content}$</span>'
+        try:
+            # Convert LaTeX to MathML
+            mathml = latex2mathml.converter.convert(latex_content)
+            return mathml
+        except Exception as e:
+            # If conversion fails, return the original LaTeX
+            return match.group(0)
 
-    # First replace display math expressions ($$...$$)
+    # Convert display math expressions ($$...$$)
     display_pattern = r'\$\$(.*?)\$\$'
-    text = re.sub(display_pattern, lambda m: format_for_mathax(m, True), text, flags=re.DOTALL)
+    text = re.sub(display_pattern, lambda m: replace_with_mathml(m), text, flags=re.DOTALL)
 
-    # Then replace inline math expressions ($...$) that aren't part of display math
-    inline_pattern = r'(?<!\$)\$(.*?)\$(?!\$)'
-    text = re.sub(inline_pattern, lambda m: format_for_mathax(m, False), text)
+    # Convert inline math expressions ($...$)
+    inline_pattern = r'\$(.*?)\$'
+    text = re.sub(inline_pattern, lambda m: replace_with_mathml(m), text, flags=re.DOTALL)
 
     return text
 
@@ -281,8 +280,8 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
         # Remove page headers from the markdown text
         markdown_text = remove_page_headers(markdown_text)
 
-        # Pre-process markdown to prepare LaTeX for MathJax
-        processed_text = prepare_latex_for_mathax(markdown_text)
+        # Pre-process markdown to convert LaTeX to MathML
+        processed_text = convert_latex_to_mathml(markdown_text)
 
         # Convert markdown to HTML
         html = markdown.markdown(processed_text, extensions=['extra', 'codehilite'])
@@ -294,15 +293,9 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
         <head>
             <meta charset="UTF-8">
             <title>{title}</title>
-            
-            <!-- MathJax for better LaTeX rendering -->
-            <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
-            <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-            
             <style>
                 @import url('https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&display=swap');
                 @import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400;1,600&display=swap');
-                @import url('https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&display=swap');
 
                 body {{
                     font-family: 'Merriweather', 'Georgia', serif;
@@ -341,16 +334,36 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
                     margin: 1.5em 0;
                 }}
 
-                /* MathJax styling */
-                .MathJax {{
-                    font-size: 1.1em !important;
+                /* Math styling */
+                math {{
+                    font-size: 1.15em;
+                    font-weight: normal;
+                    line-height: 1.5;
                 }}
-                .math-display {{
-                    margin: 1.5em 0;
-                    overflow-x: auto;
+                math > mfrac {{
+                    font-size: 1.15em;
+                    line-height: 1.5;
+                    vertical-align: -0.5em;
+                }}
+                math > msup, math > msub {{
+                    line-height: 1;
+                }}
+                math > mi, math > mn {{
+                    font-style: normal;
+                    padding: 0 0.1em;
+                }}
+                math > mo {{
+                    padding: 0 0.2em;
+                }}
+
+                /* Equations spacing */
+                math[display="block"] {{
+                    display: block;
                     text-align: center;
+                    margin: 1.5em 0;
+                    text-indent: 0;
                 }}
-                
+
                 /* Tables */
                 table {{
                     border-collapse: collapse;
@@ -390,31 +403,6 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
                     margin: 2.5cm 2cm;
                 }}
             </style>
-            
-            <script>
-                window.MathJax = {{
-                    tex: {{
-                        inlineMath: [['$', '$'], ['\\\\(', '\\\\)']],
-                        displayMath: [['$$', '$$'], ['\\\\[', '\\\\]']],
-                        processEscapes: true,
-                        processEnvironments: true
-                    }},
-                    options: {{
-                        ignoreHtmlClass: 'no-mathjax',
-                        processHtmlClass: 'mathjax'
-                    }},
-                    svg: {{
-                        fontCache: 'global'
-                    }}
-                }};
-                
-                document.addEventListener("DOMContentLoaded", function() {{
-                    // MathJax will automatically process the document
-                    if (typeof MathJax !== 'undefined') {{
-                        MathJax.typeset();
-                    }}
-                }});
-            </script>
         </head>
         <body>
             <h1>{title}</h1>
@@ -539,31 +527,6 @@ if uploaded_file is not None:
                 st.text_area("Complete Transcription", 
                                st.session_state.all_text, 
                                height=500)
-
-                # Add a preview option with LaTeX rendering
-                if st.checkbox("Show Preview with LaTeX Rendering"):
-                    # Use HTML to render markdown with MathJax support (better LaTeX rendering)
-                    st.markdown("""
-                    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
-                    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-                    <style>
-                        .math-container {
-                            overflow-x: auto;
-                            padding: 8px 0;
-                            font-size: 1.1em;
-                        }
-                        .MathJax {
-                            font-size: 110% !important;
-                        }
-                    </style>
-                    """, unsafe_allow_html=True)
-                    
-                    # Wrap the content in a div for better MathJax processing
-                    st.markdown(f"""
-                    <div class="math-container">
-                        {st.session_state.all_text}
-                    </div>
-                    """, unsafe_allow_html=True)
 
                 # Download button for complete text
                 st.download_button(

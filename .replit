@@ -36,7 +36,3 @@ run = ["sh", "-c", "cd pdflatte_project/Pdflatte && streamlit run main.py --serv
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 5001
-externalPort = 3000
