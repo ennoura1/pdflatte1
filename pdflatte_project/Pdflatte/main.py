@@ -781,9 +781,9 @@ else:
 
     # API key information box
     st.markdown("""
-    ### Getting a Google Gemini API Key:
-    1. Go to [Google AI Studio](https://makersuite.google.com/app/apikey)
-    2. Sign in with your Google account
-    3. Create a new API key
+    ### Getting a Google Gemini API Key
+    1. Go to https://aistudio.google.com/
+    2. Create a Google account if you don't have one
+    3. Access the API section and create a key
     4. Copy the API key and paste it in the sidebar
     """)
