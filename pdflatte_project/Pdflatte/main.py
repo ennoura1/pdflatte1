@@ -14,7 +14,8 @@ import markdown
 import weasyprint
 import re
 from weasyprint import HTML, CSS
-from weasyprint.text.fonts import FontConfiguration
+# Correct import for FontConfiguration
+from weasyprint.fonts import FontConfiguration
 import latex2mathml.converter
 from markdown_katex.extension import KatexExtension
 
