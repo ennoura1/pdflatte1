@@ -425,6 +425,68 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
         st.error(f"Error converting markdown to PDF: {str(e)}")
         return False
 
+# JavaScript function for copying text to clipboard
+def get_copy_button_js():
+    return """
+    <script>
+    function copyToClipboard(text) {
+        const temp = document.createElement('textarea');
+        temp.value = text;
+        document.body.appendChild(temp);
+        temp.select();
+        document.execCommand('copy');
+        document.body.removeChild(temp);
+
+        // Show a brief "Copied!" message
+        const message = document.createElement('div');
+        message.textContent = 'Copied!';
+        message.style.position = 'fixed';
+        message.style.left = '50%';
+        message.style.top = '10%';
+        message.style.transform = 'translate(-50%, -50%)';
+        message.style.padding = '8px 16px';
+        message.style.background = '#4CAF50';
+        message.style.color = 'white';
+        message.style.borderRadius = '4px';
+        message.style.zIndex = '9999';
+        document.body.appendChild(message);
+
+        setTimeout(() => {
+            document.body.removeChild(message);
+        }, 2000);
+    }
+    </script>
+    """
+
+# Function to create a copy button for text
+def create_copy_button(text, button_label="Copy All Text"):
+    # Generate a unique ID for this button
+    button_id = f"copy_button_{hash(text)}"
+
+    # Properly encode the text for JavaScript by using JSON serialization
+    import json
+    js_text = json.dumps(text)
+
+    # Create the HTML for the button and JavaScript
+    copy_button_html = f"""
+    {get_copy_button_js()}
+    <button id="{button_id}" 
+            onclick="copyToClipboard({js_text});" 
+            style="background-color: #4CAF50; color: white; padding: 8px 16px; 
+                   border: none; border-radius: 4px; cursor: pointer; 
+                   font-size: 14px; margin: 5px 0; display: inline-flex; 
+                   align-items: center; gap: 8px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+        </svg>
+        {button_label}
+    </button>
+    """
+
+    # Display the button using st.markdown with unsafe_allow_html
+    st.markdown(copy_button_html, unsafe_allow_html=True)
+
 # Upload PDF file
 uploaded_file = st.file_uploader("Upload a PDF document", type="pdf")
 
@@ -528,6 +590,9 @@ if uploaded_file is not None:
                                st.session_state.all_text, 
                                height=500)
 
+                # Add Copy All button for complete transcription
+                create_copy_button(st.session_state.all_text, "Copy Complete Transcription")
+
                 # Download button for complete text
                 st.download_button(
                     label="Download Complete Transcription",
@@ -551,11 +616,15 @@ if uploaded_file is not None:
                     )
 
                 with col2:
+                    page_text = st.session_state.transcription_results[selected_page-1]
                     st.text_area(
                         f"Page {selected_page} Transcription", 
-                        st.session_state.transcription_results[selected_page-1], 
+                        page_text, 
                         height=400
                     )
+
+                    # Add Copy button for single page transcription
+                    create_copy_button(page_text, f"Copy Page {selected_page} Transcription")
 
                     # Download button for single page transcription
                     st.download_button(
@@ -640,12 +709,16 @@ if uploaded_file is not None:
 
                 if st.session_state.translation_processed:
                     # Display the translated text
+                    arabic_text = st.session_state.arabic_text
                     st.text_area(
                         "Arabic Translation", 
-                        st.session_state.arabic_text,
+                        arabic_text,
                         height=500,
                         key="arabic_translation"
                     )
+
+                    # Add Copy button for Arabic translation
+                    create_copy_button(arabic_text, "Copy Arabic Translation")
 
                     # Download button for Arabic translation
                     st.download_button(
@@ -665,12 +738,16 @@ if uploaded_file is not None:
                                 key="ar_page_selector"
                             )
 
+                            page_ar_text = st.session_state.page_translations[ar_selected_page-1]
                             st.text_area(
                                 f"Page {ar_selected_page} Arabic Translation", 
-                                st.session_state.page_translations[ar_selected_page-1], 
+                                page_ar_text, 
                                 height=300,
                                 key=f"ar_page_{ar_selected_page}"
                             )
+
+                            # Add Copy button for single page Arabic translation
+                            create_copy_button(page_ar_text, f"Copy Page {ar_selected_page} Arabic Translation")
                 else:
                     st.info("Click 'Translate to Arabic' to generate the Arabic translation.")
 
@@ -746,7 +823,7 @@ if uploaded_file is not None:
                 st.markdown("""
                 #### About PDF Export
                 - The PDF export feature converts the markdown-formatted text to a PDF document
-                - Mathematical expressions in LaTeX format are rendered properly in the PDF
+                - Mathematical expressions inLaTeX format are rendered properly in the PDF
                 - Arabic text is fully supported with right-to-left rendering
                 - You can choose to export either the original transcription or the Arabic translation
                 """)
