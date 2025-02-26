@@ -1,10 +1,10 @@
 import streamlit as st
-import tempfile
 import os
+import tempfile
 from pdf2image import convert_from_path
-from PIL import Image
-import base64
 import io
+import base64
+from PIL import Image
 import google.generativeai as genai
 from google.api_core.exceptions import GoogleAPIError
 import time
@@ -17,14 +17,13 @@ import latex2mathml.converter
 
 # Page configuration
 st.set_page_config(
-    page_title="PdfLatte - PDF Processing & Translation",
+    page_title="PDF Transcription with Gemini",
     page_icon="📄",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
-# Main header
-st.title("PdfLatte: PDF Processing & Translation")
+# Application title and description
+st.title("PDF Transcription with Google Gemini AI")
 st.markdown("""
 This application allows you to upload a PDF document and transcribe its content using Google Gemini AI.
 The PDF is converted to images and each page is processed sequentially to extract the text content.
@@ -52,25 +51,30 @@ with st.sidebar:
 
     # Debug mode toggle
     debug_mode = st.checkbox("Enable Debug Mode", value=False)
-    if debug_mode:
-        st.warning("Debug mode enabled. Detailed information will be displayed.")
 
-    # Configure API
     if api_key:
         try:
+            # Configure the Gemini API with the provided key
             genai.configure(api_key=api_key)
             st.success("API key configured successfully!")
+
+            # Verify API connectivity if in debug mode
+            if debug_mode:
+                try:
+                    # Simple model list test to verify API connectivity
+                    models = genai.list_models()
+                    model_names = [model.name for model in models]
+                    st.write("Available models:", model_names)
+                except Exception as e:
+                    st.error(f"API Connection Test Failed: {str(e)}")
+                    st.info("This may indicate an invalid API key or connectivity issues.")
         except Exception as e:
-            st.error(f"Error configuring API: {str(e)}")
-    else:
-        st.warning("Please enter your API key to use the application.")
+            st.error(f"Error configuring API key: {str(e)}")
 
-    # About section
-    st.subheader("About PdfLatte")
+    st.markdown("---")
+    st.markdown("### About")
     st.markdown("""
-    PdfLatte is a powerful tool for processing PDF documents using AI.
-
-    **Technologies used:**
+    This application uses:
     - Streamlit for the web interface
     - pdf2image for PDF to image conversion
     - Google Generative AI SDK for Gemini API integration
@@ -81,30 +85,21 @@ with st.sidebar:
 
 # Function to convert PDF page to images
 def convert_pdf_to_images(pdf_file):
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_pdf:
-        temp_pdf.write(pdf_file.read())
-        temp_pdf_path = temp_pdf.name
-
     try:
-        # Convert PDF to images
-        images = convert_from_path(temp_pdf_path, dpi=300)
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+            tmp_file.write(pdf_file.getvalue())
+            tmp_path = tmp_file.name
 
-        # Clean up the temporary file
-        os.unlink(temp_pdf_path)
+        # Convert PDF to images
+        images = convert_from_path(tmp_path, dpi=300)
+
+        # Clean up temp file
+        os.unlink(tmp_path)
 
         return images
     except Exception as e:
-        st.error(f"Error converting PDF: {str(e)}")
-        # Clean up the temporary file
-        os.unlink(temp_pdf_path)
+        st.error(f"Error converting PDF to images: {str(e)}")
         return []
-
-# Function to encode PIL Image to base64
-def pil_image_to_base64(image):
-    buffered = io.BytesIO()
-    image.save(buffered, format="PNG")
-    img_str = base64.b64encode(buffered.getvalue()).decode()
-    return img_str
 
 # Function to transcribe an image using Gemini
 def transcribe_image(img, model_name="gemini-2.0-flash", debug=False):
@@ -114,10 +109,19 @@ def transcribe_image(img, model_name="gemini-2.0-flash", debug=False):
         model = genai.GenerativeModel(model_name)
 
         # Convert PIL Image to bytes
-        img_b64 = pil_image_to_base64(img)
+        img_bytes = io.BytesIO()
+        img.save(img_bytes, format='PNG')
+        img_bytes = img_bytes.getvalue()
+
+        # Encode image to base64
+        img_b64 = base64.b64encode(img_bytes).decode('utf-8')
 
         if debug:
-            st.write(f"Image converted to base64, size: {len(img_b64)} bytes")
+            st.write(f"Image size: {len(img_bytes)} bytes")
+            st.write(f"Base64 image size: {len(img_b64)} bytes")
+
+            if len(img_b64) > 20 * 1024 * 1024:  # 20MB limit
+                st.warning("Image exceeds 20MB limit when encoded. Consider reducing image quality.")
 
         # Create prompt parts with the image following Google's Python format
         prompt_parts = [
@@ -148,19 +152,22 @@ Simply deliver a well-formatted Markdown document that represents the content of
         ]
 
         if debug:
+            st.write("Prompt structure:", type(prompt_parts))
             st.write("Sending request to Gemini API...")
 
         # Generate content
         response = model.generate_content(prompt_parts)
 
         if debug:
-            st.write("Response received from Gemini API")
-            st.write(f"Response text length: {len(response.text)}")
+            st.write("Response received:", type(response))
 
         return response.text
-    except GoogleAPIError as api_err:
-        st.error(f"API Error: {str(api_err)}")
-        return f"API Error: {str(api_err)}"
+    except GoogleAPIError as e:
+        error_message = f"Gemini API Error: {str(e)}"
+        if "403" in str(e):
+            error_message += "\n\nThis is likely due to API key authentication issues. Please check that your API key is valid and has access to the Gemini API."
+        st.error(error_message)
+        return f"Transcription error: {error_message}"
     except Exception as e:
         st.error(f"Unexpected error: {str(e)}")
         return f"Transcription error: {str(e)}"
@@ -239,76 +246,47 @@ def translate_page(page_data):
 
     return i, translation
 
+# Function to convert LaTeX to MathML
+def convert_latex_to_mathml(text):
+    # Function to convert a single LaTeX expression to MathML
+    def replace_with_mathml(match):
+        latex_content = match.group(1)
+        try:
+            # Convert LaTeX to MathML
+            mathml = latex2mathml.converter.convert(latex_content)
+            return mathml
+        except Exception as e:
+            # If conversion fails, return the original LaTeX
+            return match.group(0)
+
+    # Convert display math expressions ($$...$$)
+    display_pattern = r'\$\$(.*?)\$\$'
+    text = re.sub(display_pattern, lambda m: replace_with_mathml(m), text, flags=re.DOTALL)
+
+    # Convert inline math expressions ($...$)
+    inline_pattern = r'\$(.*?)\$'
+    text = re.sub(inline_pattern, lambda m: replace_with_mathml(m), text, flags=re.DOTALL)
+
+    return text
+
 # Function to remove page headers for PDF generation
 def remove_page_headers(markdown_text):
     # Remove ## Page X headers
     return re.sub(r'## Page \d+\n\n', '', markdown_text)
 
-# Function to convert LaTeX to MathML for PDF rendering
-def convert_latex_to_mathml(text):
-    # Function to handle display math expressions ($$...$$)
-    def process_display_math(match):
-        latex = match.group(1).strip()
-        try:
-            # Convert LaTeX to MathML
-            mathml = latex2mathml.converter.convert(latex)
-            return f'<div class="math-display">{mathml}</div>'
-        except Exception as e:
-            # Fallback if conversion fails
-            return f'<div class="math-display"><pre>$${latex}$$</pre></div>'
-
-    # Function to handle inline math expressions ($...$)
-    def process_inline_math(match):
-        latex = match.group(1).strip()
-        try:
-            # Convert LaTeX to MathML
-            mathml = latex2mathml.converter.convert(latex)
-            return f'<span class="math-inline">{mathml}</span>'
-        except Exception as e:
-            # Fallback if conversion fails
-            return f'<span class="math-inline"><pre>${latex}$</pre></span>'
-
-    # Replace display math ($$...$$)
-    text = re.sub(r'\$\$(.*?)\$\$', process_display_math, text, flags=re.DOTALL)
-
-    # Replace inline math ($...$)
-    text = re.sub(r'\$([^\$]*?)\$', process_inline_math, text)
-
-    return text
-
 # Function to convert markdown to PDF
-def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription", style="academic"):
+def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
     try:
         # Remove page headers from the markdown text
         markdown_text = remove_page_headers(markdown_text)
 
-        # Convert LaTeX to MathML for better rendering
+        # Pre-process markdown to convert LaTeX to MathML
         processed_text = convert_latex_to_mathml(markdown_text)
 
         # Convert markdown to HTML
         html = markdown.markdown(processed_text, extensions=['extra', 'codehilite'])
 
-        # Select CSS based on style
-        if style == "academic":
-            font_family = "'Merriweather', 'Georgia', serif"
-            heading_family = "'Source Sans Pro', 'Helvetica', sans-serif"
-            font_size = "11pt"
-            line_height = "1.8"
-            margin = "2.5cm 2cm"
-        elif style == "book":
-            font_family = "'Libre Baskerville', 'Georgia', serif"
-            heading_family = "'Libre Baskerville', 'Georgia', serif"
-            font_size = "11.5pt"
-            line_height = "1.7"
-            margin = "2.5cm 2.5cm"
-        else:  # standard
-            font_family = "'Source Sans Pro', 'Helvetica', sans-serif"
-            heading_family = "'Source Sans Pro', 'Helvetica', sans-serif"
-            font_size = "12pt"
-            line_height = "1.6"
-            margin = "2cm"
-
-        # Create the final HTML document with MathML for LaTeX rendering
+        # Create the final HTML document
         html = f"""
         <!DOCTYPE html>
         <html>
@@ -318,42 +296,29 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription", style
             <style>
                 @import url('https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&display=swap');
                 @import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400;1,600&display=swap');
-                @import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap');
-                @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&display=swap');
 
                 body {{
-                    font-family: {font_family};
-                    line-height: {line_height};
-                    margin: 2cm;
+                    font-family: 'Merriweather', 'Georgia', serif;
+                    line-height: 1.8;
+                    margin: 3em;
                     color: #333;
-                    font-size: {font_size};
-                    text-align: justify;
+                    font-size: 11pt;
                 }}
-
                 h1, h2, h3, h4, h5, h6 {{
-                    font-family: {heading_family};
+                    font-family: 'Source Sans Pro', 'Helvetica', sans-serif;
                     color: #1a1a1a;
                     margin-top: 1.5em;
                     margin-bottom: 0.8em;
                     line-height: 1.2;
                 }}
-
-                h1 {{ font-size: 24pt; font-weight: 700; margin-top: 2em; }}
-                h2 {{ font-size: 20pt; font-weight: 600; margin-top: 1.8em; }}
+                h1 {{ font-size: 24pt; font-weight: 700; }}
+                h2 {{ font-size: 20pt; font-weight: 600; }}
                 h3 {{ font-size: 16pt; font-weight: 600; }}
 
                 p {{
                     margin-bottom: 1.2em;
+                    text-align: justify;
                 }}
-
-                code {{
-                    font-family: 'Fira Code', monospace;
-                    font-size: 0.9em;
-                    background-color: #f5f5f5;
-                    padding: 0.1em 0.3em;
-                    border-radius: 3px;
-                }}
-
                 pre {{
                     background-color: #f8f8f8;
                     border: 1px solid #e0e0e0;
@@ -363,7 +328,6 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription", style
                     overflow-x: auto;
                     line-height: 1.4;
                 }}
-
                 img {{
                     max-width: 100%;
                     height: auto;
@@ -371,35 +335,33 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription", style
                 }}
 
                 /* Math styling */
-                .math-display {{
+                math {{
+                    font-size: 1.15em;
+                    font-weight: normal;
+                    line-height: 1.5;
+                }}
+                math > mfrac {{
+                    font-size: 1.15em;
+                    line-height: 1.5;
+                    vertical-align: -0.5em;
+                }}
+                math > msup, math > msub {{
+                    line-height: 1;
+                }}
+                math > mi, math > mn {{
+                    font-style: normal;
+                    padding: 0 0.1em;
+                }}
+                math > mo {{
+                    padding: 0 0.2em;
+                }}
+
+                /* Equations spacing */
+                math[display="block"] {{
                     display: block;
-                    width: 100%;
                     text-align: center;
                     margin: 1.5em 0;
-                    overflow-x: auto;
-                    font-size: 1.1em;
-                }}
-
-                .math-display math {{
-                    font-size: 1.2em;
-                }}
-
-                .math-inline {{
-                    font-size: 1.05em;
-                }}
-
-                /* MathML-specific styling */
-                math {{
-                    font-size: 1.1em;
-                }}
-
-                mfrac {{
-                    line-height: 0.9em;
-                    font-size: 1.05em;
-                }}
-
-                msup, msub {{
-                    line-height: 0.5em;
+                    text-indent: 0;
                 }}
 
                 /* Tables */
@@ -408,12 +370,10 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription", style
                     width: 100%;
                     margin: 1.5em 0;
                 }}
-
                 th, td {{
                     padding: 8px 12px;
                     border: 1px solid #e0e0e0;
                 }}
-
                 th {{
                     background-color: #f5f5f5;
                     font-weight: 600;
@@ -425,17 +385,6 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription", style
                     padding-left: 1em;
                     margin-left: 0;
                     font-style: italic;
-                    color: #555;
-                }}
-
-                /* Lists */
-                ul, ol {{
-                    margin-bottom: 1.2em;
-                    padding-left: 2em;
-                }}
-
-                li {{
-                    margin-bottom: 0.5em;
                 }}
 
                 /* RTL support for Arabic */
@@ -445,22 +394,13 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription", style
                     font-family: 'Amiri', 'Traditional Arabic', serif;
                     line-height: 1.8;
                 }}
-
                 .rtl h1, .rtl h2, .rtl h3, .rtl h4, .rtl h5, .rtl h6 {{
                     font-family: 'Amiri', 'Traditional Arabic', serif;
                 }}
 
                 /* Print-specific styles */
                 @page {{
-                    margin: {margin};
-                }}
-
-                /* Support for LaTeX rendering */
-                .math-display::before,
-                .math-display::after {{
-                    content: "";
-                    display: block;
-                    height: 0.5em;
+                    margin: 2.5cm 2cm;
                 }}
             </style>
         </head>
@@ -488,91 +428,93 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription", style
 # Upload PDF file
 uploaded_file = st.file_uploader("Upload a PDF document", type="pdf")
 
-# Main content layout
 if uploaded_file is not None:
-    # Create columns for processing and results
-    process_col, results_col = st.columns([1, 2])
+    # Create a container for displaying the PDF
+    preview_col, results_col = st.columns([1, 2])
 
-    with process_col:
-        st.subheader("Process PDF")
+    with preview_col:
+        st.subheader("PDF Preview")
+        # Display PDF file info
+        file_details = {
+            "Filename": uploaded_file.name,
+            "File size": f"{uploaded_file.size / 1024:.2f} KB"
+        }
+        st.json(file_details)
 
-        # Process PDF if button is clicked
+        # Create a button to process the PDF
         if st.button("Process PDF"):
-            if api_key:
+            if not api_key:
+                st.error("Please enter your Google Gemini API key in the sidebar first.")
+            else:
+                # Convert PDF to images
                 with st.spinner("Converting PDF to images..."):
-                    # Convert PDF to images
                     images = convert_pdf_to_images(uploaded_file)
 
-                    # Store images in session state for later use
-                    st.session_state.page_images = images
+                if not images:
+                    st.error("Failed to convert PDF to images. Please try again with a different PDF.")
+                else:
+                    st.success(f"Successfully converted PDF to {len(images)} page images.")
 
-                    # Display sample of first image
-                    if images:
-                        st.success(f"Successfully converted PDF to {len(images)} page images.")
+                    # Create containers for results
+                    transcription_results = [None] * len(images)  # Pre-allocate list
+                    all_text = ""
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
 
-                        # Create containers for results
-                        transcription_results = [None] * len(images)  # Pre-allocate list
-                        all_text = ""
-                        progress_bar = st.progress(0)
-                        status_text = st.empty()
+                    # Determine processing method (parallel or sequential)
+                    if parallel_processing:
+                        status_text.text(f"Processing {len(images)} pages in parallel...")
 
-                        # Determine processing method (parallel or sequential)
-                        if parallel_processing:
-                            status_text.text(f"Processing {len(images)} pages in parallel...")
+                        # Prepare page data for parallel processing
+                        page_data = [(img, i, len(images), model_choice, debug_mode) 
+                                     for i, img in enumerate(images)]
 
-                            # Prepare page data for parallel processing
-                            page_data = [(img, i, len(images), model_choice, debug_mode)
-                                         for i, img in enumerate(images)]
+                        # Process pages in parallel
+                        completed = 0
+                        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                            future_to_page = {executor.submit(process_page, data): data for data in page_data}
 
-                            # Process pages in parallel
-                            completed = 0
-                            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                                future_to_page = {executor.submit(process_page, data): data for data in page_data}
-
-                                for future in concurrent.futures.as_completed(future_to_page):
-                                    i, transcription = future.result()
-                                    transcription_results[i] = transcription
-
-                                    # Display the processed image
-                                    st.image(images[i], caption=f"Page {i+1}", width=300)
-
-                                    # Update progress
-                                    completed += 1
-                                    progress_bar.progress(completed / len(images))
-                                    status_text.text(f"Processed page {i+1}/{len(images)}...")
-
-                            # Combine results in correct order
-                            all_text = ""
-                            for i, transcription in enumerate(transcription_results):
-                                # Use markdown header formatting for page separators
-                                all_text += f"\n\n{transcription}"
-
-                        else:
-                            # Process each image individually (sequential)
-                            for i, img in enumerate(images):
-                                status_text.text(f"Processing page {i+1}/{len(images)}...")
-
-                                # Display the current image being processed
-                                st.image(img, caption=f"Page {i+1}", width=300)
-
-                                # Process page
-                                _, transcription = process_page((img, i, len(images), model_choice, debug_mode))
+                            for future in concurrent.futures.as_completed(future_to_page):
+                                i, transcription = future.result()
                                 transcription_results[i] = transcription
-                                all_text += f"\n\n{transcription}"
+
+                                # Display the processed image
+                                st.image(images[i], caption=f"Page {i+1}", width=300)
 
                                 # Update progress
-                                progress_bar.progress((i + 1) / len(images))
+                                completed += 1
+                                progress_bar.progress(completed / len(images))
+                                status_text.text(f"Processed page {i+1}/{len(images)}...")
 
-                        status_text.text("Processing completed!")
+                        # Combine results in correct order
+                        all_text = ""
+                        for i, transcription in enumerate(transcription_results):
+                            # Use markdown header formatting for page separators
+                            all_text += f"\n\n{transcription}"
 
-                        # Store results in session state
-                        st.session_state.transcription_results = transcription_results
-                        st.session_state.all_text = all_text
+                    else:
+                        # Process each image individually (sequential)
+                        for i, img in enumerate(images):
+                            status_text.text(f"Processing page {i+1}/{len(images)}...")
 
-                        # Set processed flag
-                        st.session_state.processed = True
-            else:
-                st.error("Please enter your API key in the sidebar to use the application.")
+                            # Display the current image being processed
+                            st.image(img, caption=f"Page {i+1}", width=300)
+
+                            # Process page
+                            _, transcription = process_page((img, i, len(images), model_choice, debug_mode))
+                            transcription_results[i] = transcription
+                            all_text += f"\n\n{transcription}"
+
+                            # Update progress
+                            progress_bar.progress((i + 1) / len(images))
+
+                    status_text.text("Processing completed!")
+
+                    # Store results in session state for display
+                    st.session_state.page_images = images
+                    st.session_state.transcription_results = transcription_results
+                    st.session_state.all_text = all_text.strip()
+                    st.session_state.processed = True
 
     with results_col:
         st.subheader("Results")
@@ -582,45 +524,43 @@ if uploaded_file is not None:
             tabs = st.tabs(["Complete Document", "Page by Page", "Arabic Translation", "PDF Export"])
 
             with tabs[0]:
-                st.text_area("Complete Transcription",
-                                st.session_state.all_text,
-                                height=500)
+                st.text_area("Complete Transcription", 
+                               st.session_state.all_text, 
+                               height=500)
 
                 # Download button for complete text
                 st.download_button(
                     label="Download Complete Transcription",
                     data=st.session_state.all_text,
-                    file_name=f"{uploaded_file.name.split('.')[0]}_complete_transcription.txt",
+                    file_name=f"{uploaded_file.name.split('.')[0]}_transcription.txt",
                     mime="text/plain"
                 )
 
             with tabs[1]:
-                # Create columns for image and text
-                col1, col2 = st.columns([1, 1])
+                # Page selection
+                page_count = len(st.session_state.page_images)
+                selected_page = st.selectbox("Select page", range(1, page_count+1))
 
-                # Page selection for individual viewing
-                selected_page = st.selectbox("Select page to view", range(1, len(st.session_state.page_images) + 1))
-
+                # Display the selected page and its transcription
+                col1, col2 = st.columns(2)
                 with col1:
-                    # Display the selected image
                     st.image(
-                        st.session_state.page_images[selected_page - 1],
-                        caption=f"Page {selected_page}",
+                        st.session_state.page_images[selected_page-1], 
+                        caption=f"Page {selected_page}", 
                         use_container_width=True
                     )
 
                 with col2:
-                    # Display the transcription for the selected page
                     st.text_area(
-                        f"Page {selected_page} Transcription",
-                        st.session_state.transcription_results[selected_page - 1],
+                        f"Page {selected_page} Transcription", 
+                        st.session_state.transcription_results[selected_page-1], 
                         height=400
                     )
 
-                    # Download button for individual page
+                    # Download button for single page transcription
                     st.download_button(
                         label=f"Download Page {selected_page} Transcription",
-                        data=st.session_state.transcription_results[selected_page - 1],
+                        data=st.session_state.transcription_results[selected_page-1],
                         file_name=f"{uploaded_file.name.split('.')[0]}_page{selected_page}_transcription.txt",
                         mime="text/plain"
                     )
@@ -679,11 +619,11 @@ if uploaded_file is not None:
                                         # Update progress
                                         completed += 1
                                         translation_progress.progress(completed / len(page_translations))
-                                        translation_status.text(f"Translated page {i + 1}/{len(page_translations)}...")
+                                        translation_status.text(f"Translated page {i+1}/{len(page_translations)}...")
                             else:
                                 # Sequential translation
                                 for i, data in enumerate(translation_data):
-                                    translation_status.text(f"Translating page {i + 1}/{len(translation_data)}...")
+                                    translation_status.text(f"Translating page {i+1}/{len(translation_data)}...")
                                     _, translation = translate_page(data)
                                     page_translations[i] = translation
                                     translation_progress.progress((i + 1) / len(translation_data))
@@ -701,7 +641,7 @@ if uploaded_file is not None:
                 if st.session_state.translation_processed:
                     # Display the translated text
                     st.text_area(
-                        "Arabic Translation",
+                        "Arabic Translation", 
                         st.session_state.arabic_text,
                         height=500,
                         key="arabic_translation"
@@ -716,19 +656,18 @@ if uploaded_file is not None:
                     )
 
                     # If we translated page by page, show option to view individual pages
-                    if translation_mode == "Translate Page by Page (More Accurate)" and hasattr(st.session_state,
-                                                                                             'page_translations'):
+                    if translation_mode == "Translate Page by Page (More Accurate)" and hasattr(st.session_state, 'page_translations'):
                         if len(st.session_state.page_translations) > 0:
                             # Page selection for translated content
                             ar_selected_page = st.selectbox(
-                                "Select page to view Arabic translation",
-                                range(1, len(st.session_state.page_translations) + 1),
+                                "Select page to view Arabic translation", 
+                                range(1, len(st.session_state.page_translations)+1),
                                 key="ar_page_selector"
                             )
 
                             st.text_area(
-                                f"Page {ar_selected_page} Arabic Translation",
-                                st.session_state.page_translations[ar_selected_page - 1],
+                                f"Page {ar_selected_page} Arabic Translation", 
+                                st.session_state.page_translations[ar_selected_page-1], 
                                 height=300,
                                 key=f"ar_page_{ar_selected_page}"
                             )
@@ -752,22 +691,13 @@ if uploaded_file is not None:
                     key="pdf_style"
                 )
 
-                # Map selection to style parameter
-                style_map = {
-                    "Standard": "standard",
-                    "Academic Journal": "academic",
-                    "Book Style": "book"
-                }
-                selected_style = style_map[pdf_style]
-
                 # Check if we have the selected content available
                 content_available = False
                 if export_content == "Original Transcription" and hasattr(st.session_state, 'all_text'):
                     content_available = True
                     content_to_export = st.session_state.all_text
                     export_title = f"{uploaded_file.name.split('.')[0]} - Transcription"
-                elif export_content == "Arabic Translation" and hasattr(st.session_state, 'translation_processed') and \
-                        st.session_state.translation_processed:
+                elif export_content == "Arabic Translation" and hasattr(st.session_state, 'translation_processed') and st.session_state.translation_processed:
                     content_available = True
                     content_to_export = st.session_state.arabic_text
                     export_title = f"{uploaded_file.name.split('.')[0]} - Arabic Translation"
@@ -780,8 +710,7 @@ if uploaded_file is not None:
                                 pdf_path = tmp_file.name
 
                             # Convert markdown to PDF
-                            success = markdown_to_pdf(content_to_export, pdf_path, title=export_title,
-                                                      style=selected_style)
+                            success = markdown_to_pdf(content_to_export, pdf_path, title=export_title)
 
                             if success:
                                 # Read the generated PDF
@@ -793,69 +722,68 @@ if uploaded_file is not None:
                                 st.session_state.pdf_filename = f"{uploaded_file.name.split('.')[0]}_{export_content.lower().replace(' ', '_')}.pdf"
                                 st.session_state.pdf_generated = True
 
-                                st.success("PDF generated successfully!")
-
-                                # Display download button
-                                st.download_button(
-                                    label=f"Download {export_content} as PDF",
-                                    data=pdf_data,
-                                    file_name=st.session_state.pdf_filename,
-                                    mime="application/pdf"
-                                )
-
                                 # Clean up the temporary file
                                 os.unlink(pdf_path)
+
+                                st.success("PDF generated successfully!")
                             else:
                                 st.error("Failed to generate PDF. Please try again.")
+
+                    # Download button for PDF (only shown if PDF was generated)
+                    if hasattr(st.session_state, 'pdf_generated') and st.session_state.pdf_generated:
+                        st.download_button(
+                            label=f"Download {export_content} as PDF",
+                            data=st.session_state.pdf_data,
+                            file_name=st.session_state.pdf_filename,
+                            mime="application/pdf"
+                        )
                 else:
-                    if export_content == "Arabic Translation":
-                        st.info("Please translate the document to Arabic first.")
+                    if export_content == "Original Transcription":
+                        st.info("Please process a PDF document first to generate the transcription.")
                     else:
-                        st.info("Please process a PDF document first.")
+                        st.info("Please translate the content to Arabic first.")
 
                 st.markdown("""
                 #### About PDF Export
                 - The PDF export feature converts the markdown-formatted text to a PDF document
-                - Mathematical expressions in LaTeX format are rendered directly to MathML
+                - Mathematical expressions in LaTeX format are rendered properly in the PDF
                 - Arabic text is fully supported with right-to-left rendering
                 - You can choose to export either the original transcription or the Arabic translation
-                - Different styling options provide flexibility for various use cases
                 """)
 else:
     # Display sample image when no PDF is uploaded
     st.info("Please upload a PDF document to begin the transcription process.")
 
-    # Create columns for instructions
     col1, col2 = st.columns(2)
-
     with col1:
         st.markdown("""
-        ### How to use:
-        1. Enter your Google Gemini API Key in the sidebar
-        2. Upload a PDF document using the file uploader
+        ### How it works:
+        1. Upload a PDF document
+        2. Enter your Google Gemini API key in the sidebar
         3. Click 'Process PDF' to start transcription
         4. View the results page by page or as a complete document
         5. Download the transcription as a text file
         6. Translate to Arabic if needed
-        7. Export to PDF for a well-formatted document
+        7. Export to PDF with proper formatting
         """)
 
     with col2:
         st.markdown("""
-        ### Tips:
-        - PDFs with clear text work best
+        ### Tips for best results:
+        - Use PDFs with clear, readable text
         - Larger files may take more time to process
         - If you encounter rate limits, wait a few minutes and try again
         - For multi-page PDFs, each page is processed individually
         - Enable parallel processing for faster results
         - Enable debug mode to troubleshoot API issues
         - For better translation quality, use the page-by-page option
-        - Choose different PDF styles for better reading experience
         """)
 
     # API key information box
-    st.info("""
-    #### You'll need a Google Gemini API key to use this application.
-    - If you don't have one yet, you can get it from the [Google AI Studio](https://makersuite.google.com/app/apikey).
-    - Your API key is handled securely and only stored in your browser session.
+    st.markdown("""
+    ### Getting a Google Gemini API Key:
+    1. Go to [Google AI Studio](https://makersuite.google.com/app/apikey)
+    2. Sign in with your Google account
+    3. Create a new API key
+    4. Copy the API key and paste it in the sidebar
     """)
