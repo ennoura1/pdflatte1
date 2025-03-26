@@ -32,7 +32,11 @@ You can also translate the transcription to Arabic.
 # Sidebar for API key configuration
 with st.sidebar:
     st.header("Configuration")
-    api_key = st.text_input("Enter your Google Gemini API Key", type="password")
+    api_key = os.environ.get("GEMINI_API_KEY", "")
+    if not api_key:
+        api_key = st.text_input("Enter your Google Gemini API Key", type="password")
+    else:
+        st.success("API key loaded from environment!")
 
     # Model selection
     model_choice = st.selectbox(
