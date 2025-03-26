@@ -13,8 +13,6 @@ import concurrent.futures
 import markdown
 import weasyprint
 import re
-import latex2mathml.converter
-from mathpix_markdown_it import mathpix_markdown_it
 
 # Page configuration
 st.set_page_config(
@@ -249,29 +247,9 @@ def translate_page(page_data):
     return i, translation
 
 # Function to render markdown with LaTeX using Mathpix's markdown-it
-def render_markdown_with_mathpix(markdown_text):
-    # Create an instance of mathpix-markdown-it with appropriate options
-    mathpix_md = mathpix_markdown_it.mathpixMarkdownIt(
-        options={
-            'html': True,
-            'xhtmlOut': True,
-            'breaks': True,
-            'langPrefix': 'language-',
-            'linkify': True,
-            'typographer': True,
-        },
-        # Enable plugins for better LaTeX handling
-        plugins=[
-            'math',
-            'latex',
-            'highlight',
-            'subscript',
-            'superscript'
-        ]
-    )
-
-    # Render markdown to HTML with LaTeX support
-    html = mathpix_md.render(markdown_text)
+def render_markdown_with_basic(markdown_text):
+    # Convert markdown to HTML using basic markdown
+    html = markdown.markdown(markdown_text, extensions=['tables'])
     return html
 
 # Function to remove page headers for PDF generation
@@ -286,7 +264,7 @@ def markdown_to_pdf(markdown_text, output_path, title="PDF Transcription"):
         markdown_text = remove_page_headers(markdown_text)
 
         # Render markdown with LaTeX to HTML using Mathpix's markdown-it
-        html_content = render_markdown_with_mathpix(markdown_text)
+        html_content = render_markdown_with_basic(markdown_text)
 
         # Create the final HTML document
         html = f"""
