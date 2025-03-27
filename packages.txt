@@ -6,4 +6,4 @@ shared-mime-info
 libpangoft2-1.0-0
 poppler-utils
 tesseract-ocr
-tesseract-ocr-eng # Or other language packs like tesseract-ocr-fra, tesseract-ocr-deu, etc.
+tesseract-ocr-eng
